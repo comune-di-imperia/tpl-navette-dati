@@ -451,16 +451,93 @@ def riepilogo_telemetria(segnali: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
         # ogni transizione 0->diverso da 0 e' un'apertura
         aperture = int(((porte.shift(1).fillna(0) == 0) & (porte != 0)).sum())
         ris["aperture_porte"] = aperture
-    for nome, etichetta in (
-        ("Robot_Mode", "modalita_robot"),
-        ("Vehicle_Mode", "modalita_veicolo"),
-    ):
-        if nome in segnali:
-            conteggi = segnali[nome]["value"].value_counts()
-            tot = int(conteggi.sum())
-            ris[etichetta] = {
-                str(k): round(100.0 * int(c) / tot, 1) for k, c in conteggi.items()
-            }
+    ris.update(riepilogo_modalita(segnali))
+    return ris
+
+
+# Corrispondenza dei codici, ricavata dai dati reali di BG08 del 03/08/2026:
+# in Robot_Mode 1 la navetta ha percorso 12,847 km a 7,6 km/h di media con
+# punte di 15, in Robot_Mode 0 appena 318 m a 2,2 km/h - andature e percorrenze
+# da manovra. Se Navya fornisce la tabella ufficiale, si corregge qui.
+GUIDA_AUTONOMA = 1.0
+GUIDA_MANUALE = 0.0
+
+# Sotto questa velocita' il veicolo e' fermo: sono oscillazioni del sensore.
+SOGLIA_MOTO_MPS = 0.15
+
+# Oltre un secondo fra due campioni non c'e' continuita': l'intervallo non va
+# sommato al tempo di guida, altrimenti una pausa notturna diventa marcia.
+PASSO_MASSIMO_S = 1.0
+
+
+def riepilogo_modalita(segnali: Dict[str, pd.DataFrame]) -> Dict[str, Any]:
+    """Ripartizione fra guida autonoma e manuale, in tempo e in percorrenza.
+
+    Contare i campioni per modalita' - come si faceva - da' numeri veri ma
+    ingannevoli: il file copre giorni e la navetta e' quasi sempre ferma,
+    quindi la percentuale racconta soprattutto quanto e' stata parcheggiata in
+    una modalita' o nell'altra. Quello che interessa e' **quanto ha marciato**
+    in autonomo: si pesa quindi ogni campione con la sua durata e si separa il
+    tempo in movimento da quello da fermo.
+    """
+    if "Robot_Mode" not in segnali or "Vehicle_Speed" not in segnali:
+        return {}
+
+    v = segnali["Vehicle_Speed"].rename(columns={"value": "velocita"}).copy()
+    v["velocita"] = pd.to_numeric(v["velocita"], errors="coerce")
+    v = v.dropna(subset=["velocita"])
+    if v.empty:
+        return {}
+
+    v["dt"] = (
+        v["timestamp"].diff().dt.total_seconds().fillna(0).clip(0, PASSO_MASSIMO_S)
+    )
+    modo = segnali["Robot_Mode"].rename(columns={"value": "modo"})
+    u = pd.merge_asof(
+        v, modo, on="timestamp", direction="nearest", tolerance=pd.Timedelta("1s")
+    ).dropna(subset=["modo"])
+    if u.empty:
+        return {}
+
+    u["percorso"] = u["velocita"] * u["dt"]
+    in_moto = u["velocita"] > SOGLIA_MOTO_MPS
+
+    def _quota(codice: float) -> Dict[str, float]:
+        sel = u["modo"] == codice
+        return {
+            "ore": float(u.loc[sel & in_moto, "dt"].sum()) / 3600,
+            "km": float(u.loc[sel, "percorso"].sum()) / 1000,
+        }
+
+    autonoma, manuale = _quota(GUIDA_AUTONOMA), _quota(GUIDA_MANUALE)
+    km_totali = autonoma["km"] + manuale["km"]
+    ore_totali = autonoma["ore"] + manuale["ore"]
+
+    ris: Dict[str, Any] = {
+        "guida_autonoma_km": round(autonoma["km"], 3),
+        "guida_manuale_km": round(manuale["km"], 3),
+        "guida_autonoma_ore": round(autonoma["ore"], 2),
+        "guida_manuale_ore": round(manuale["ore"], 2),
+    }
+    if km_totali > 0:
+        ris["quota_autonoma_percorrenza_pct"] = round(
+            100.0 * autonoma["km"] / km_totali, 1
+        )
+    if ore_totali > 0:
+        ris["quota_autonoma_tempo_pct"] = round(100.0 * autonoma["ore"] / ore_totali, 1)
+
+    # Vehicle_Mode distingue il veicolo operativo da quello in sosta: nei dati
+    # reali il codice 2 non ha mai prodotto un metro di percorrenza.
+    if "Vehicle_Mode" in segnali:
+        vm = segnali["Vehicle_Mode"].rename(columns={"value": "stato"})
+        w = pd.merge_asof(
+            v, vm, on="timestamp", direction="nearest", tolerance=pd.Timedelta("1s")
+        ).dropna(subset=["stato"])
+        operativo = w.loc[w["stato"] != 2.0, "dt"].sum()
+        ris["ore_veicolo_operativo"] = round(float(operativo) / 3600, 2)
+        ris["ore_veicolo_in_sosta"] = round(
+            float(w.loc[w["stato"] == 2.0, "dt"].sum()) / 3600, 2
+        )
     return ris
 
 

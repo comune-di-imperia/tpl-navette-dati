@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from . import analisi, posta
+from . import analisi, posta, referto
 
 DATI = Path(os.environ.get("TPL_DATI", "/var/lib/tpl-navette"))
 UPLOAD = DATI / "uploads"
@@ -144,80 +144,12 @@ def _corpo_email(contesto: Dict[str, Any]) -> str:
     return "\n".join(righe)
 
 
-def _tabella(titolo: str, voci: Dict[str, Any]) -> str:
-    if not voci:
-        return ""
-    righe = "".join(
-        f'<tr><td class="k">{k.replace("_", " ")}</td><td>{v}</td></tr>'
-        for k, v in voci.items()
-    )
-    return f'<table><tr><th colspan="2">{titolo}</th></tr>{righe}</table>'
-
-
 def genera_pdf(contesto: Dict[str, Any], destinazione: Path) -> Path:
-    """Report PDF neutro, senza carta intestata."""
+    """Report PDF dell'elaborazione. La composizione sta in :mod:`referto`."""
     from weasyprint import HTML
 
-    corpo = []
-    for pc, info in (contesto.get("computer") or {}).items():
-        corpo.append(
-            _tabella(
-                f"Computer di bordo {pc} &ndash; {info.get('tipo', '?')}",
-                info.get("riepilogo") or {},
-            )
-        )
-    if not corpo:
-        corpo.append('<p class="vuoto">nessun dato analizzabile nell\'archivio</p>')
-
-    anomalie = contesto.get("anomalie") or []
-    if anomalie:
-        righe = "".join(
-            f'<tr><td class="k">{a["livello"]} &ndash; {a["contesto"]}</td>'
-            f"<td>{a['messaggio']}</td></tr>"
-            for a in anomalie
-        )
-        corpo.append(
-            f'<table><tr><th colspan="2">Segnalazioni</th></tr>{righe}</table>'
-        )
-
-    html = """<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
-<style>
-@page { size: A4; margin: 2cm; }
-body { font-family: "DejaVu Sans", sans-serif; font-size: 10pt; color: #1b2430; }
-h1 { font-size: 14pt; margin: 0 0 4px; }
-.sub { color: #667; font-size: 9pt; margin-bottom: 18px; }
-table { border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 9pt; }
-th { background: #eef2f7; text-align: left; padding: 5px 7px; }
-td { border: 1px solid #d8e0ea; padding: 4px 7px; }
-td.k { width: 45%; font-weight: bold; background: #fafbfd; }
-.vuoto { color: #888; font-style: italic; }
-.meta { margin-top: 20px; font-size: 8.5pt; color: #555; }
-</style></head><body>
-<h1>Report elaborazione dati navetta __NAVETTA__</h1>
-<div class="sub">TPL navette a guida autonoma &ndash; Comune di Imperia
-&nbsp;|&nbsp; giornata __GIORNO__ &nbsp;|&nbsp; VIN __VIN__</div>
-__CORPO__
-<div class="meta">
-  Archivio originale: __ORIGINALE__<br>
-  File elaborato: __ELABORATO__<br>
-  Archiviazione S3: __CHIAVE__<br>
-  Elaborazione del __QUANDO__
-</div>
-</body></html>"""
-    for segna, valore in (
-        ("__NAVETTA__", contesto.get("navetta") or "-"),
-        ("__GIORNO__", contesto.get("data_file") or "-"),
-        ("__VIN__", contesto.get("vin") or "-"),
-        ("__CORPO__", "\n".join(corpo)),
-        ("__ORIGINALE__", contesto.get("originale", "-")),
-        ("__ELABORATO__", contesto.get("elaborato") or "-"),
-        ("__CHIAVE__", contesto.get("chiave_s3", "-")),
-        ("__QUANDO__", contesto.get("quando", "-")),
-    ):
-        html = html.replace(segna, str(valore))
-
     destinazione.parent.mkdir(parents=True, exist_ok=True)
-    HTML(string=html).write_pdf(str(destinazione))
+    HTML(string=referto.componi(contesto)).write_pdf(str(destinazione))
     return destinazione
 
 
