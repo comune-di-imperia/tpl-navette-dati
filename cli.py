@@ -53,6 +53,16 @@ def main(argv=None) -> int:
     sub.add_parser("utenti", help="elenca le utenze")
     sub.add_parser("token-pulisci", help="rimuove i token scaduti")
 
+    c = sub.add_parser(
+        "registro-archivia", help="copia su S3 i mesi conclusi e sfoltisce il database"
+    )
+    c.add_argument("--mesi-in-linea", type=int, default=None)
+    c.add_argument(
+        "--senza-eliminare",
+        action="store_true",
+        help="copia soltanto, non rimuove nulla dal database",
+    )
+
     c = sub.add_parser("registro", help="mostra il registro attivita'")
     c.add_argument("--limite", type=int, default=50)
     c.add_argument("--utente", default="")
@@ -100,6 +110,25 @@ def main(argv=None) -> int:
 
     elif a.comando == "token-pulisci":
         print(f"token rimossi: {db.pulisci_token()}")
+
+    elif a.comando == "registro-archivia":
+        from . import archivio_registro
+
+        esito = archivio_registro.archivia(
+            mesi_in_linea=(
+                a.mesi_in_linea
+                if a.mesi_in_linea is not None
+                else archivio_registro.MESI_IN_LINEA
+            ),
+            elimina=not a.senza_eliminare,
+        )
+        print(f"mesi esaminati:  {', '.join(esito['esaminati']) or 'nessuno'}")
+        print(f"copiati su S3:   {', '.join(esito['caricati']) or 'nessuno'}")
+        print(f"gia' archiviati: {', '.join(esito['gia_presenti']) or 'nessuno'}")
+        for mese, quante in esito["eliminati"].items():
+            print(f"eliminate dal database: {mese} ({quante} voci)")
+        for mese in esito["saltati"]:
+            print(f"NON eliminato (copia assente sul bucket): {mese}")
 
     elif a.comando == "registro":
         for v in db.leggi_registro(a.limite, a.utente):

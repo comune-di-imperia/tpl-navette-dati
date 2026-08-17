@@ -1,0 +1,12 @@
+[Unit]
+Description=Archiviazione mensile del registro TPL navette
+
+[Timer]
+# il 2 del mese: il giorno 1 il mese appena chiuso e' completo, ma un'ora di
+# margine evita di correre contro eventuali scritture a cavallo della mezzanotte
+OnCalendar=*-*-02 03:30:00
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

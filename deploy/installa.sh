@@ -23,7 +23,10 @@ apt-get install -y --no-install-recommends \
 
 id -u tpl >/dev/null 2>&1 || useradd --system --home "$DATI" --shell /usr/sbin/nologin tpl
 
-mkdir -p "$DESTINAZIONE/scripts/tpl_navette" "$DATI/uploads" "$DATI/output" "$CONFIG"
+mkdir -p "$DESTINAZIONE/scripts/tpl_navette" "$DATI/uploads" "$DATI/output" "$CONFIG" \
+         /var/log/tpl-navette
+chown root:adm /var/log/tpl-navette
+chmod 750 /var/log/tpl-navette
 touch "$DESTINAZIONE/scripts/__init__.py" "$DESTINAZIONE/scripts/tpl_navette/__init__.py"
 
 rsync -a --delete \
@@ -58,8 +61,23 @@ if [ ! -f "$CONFIG/env" ]; then
 fi
 
 install -m 0644 "$QUI/tpl-navette.service" /etc/systemd/system/tpl-navette.service
+
+# archiviazione mensile del registro attivita' su S3
+install -m 0644 "$QUI/tpl-navette-archivio.service" \
+    /etc/systemd/system/tpl-navette-archivio.service
+install -m 0644 "$QUI/tpl-navette-archivio.timer" \
+    /etc/systemd/system/tpl-navette-archivio.timer
+
+# conservazione dei log: 180 giorni per il sito, tetto al journal di sistema
+install -m 0644 "$QUI/tpl-navette.logrotate" /etc/logrotate.d/tpl-navette
+mkdir -p /etc/systemd/journald.conf.d
+install -m 0644 "$QUI/journald-tpl.conf" \
+    /etc/systemd/journald.conf.d/tpl-navette.conf
+systemctl restart systemd-journald
+
 systemctl daemon-reload
 systemctl enable --now tpl-navette
+systemctl enable --now tpl-navette-archivio.timer
 systemctl restart tpl-navette
 
 a2enmod proxy proxy_http headers ssl rewrite >/dev/null

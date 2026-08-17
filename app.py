@@ -10,6 +10,7 @@ avviato con **un solo processo** (piu' thread), altrimenti la coda si sdoppia.
 
 from __future__ import annotations
 
+import csv
 import io
 import json
 import logging
@@ -493,6 +494,55 @@ def scarica_tutti_i_report():
         mimetype="application/zip",
         as_attachment=True,
         download_name="report-navette.zip",
+    )
+
+
+@app.route("/registro/esporta.csv")
+@richiede_permesso(permessi.LEGGE_REGISTRO)
+def esporta_registro():
+    filtro = request.args.get("utente", "")
+    voci = db.leggi_registro(limite=100_000, utente=filtro)
+
+    testo = io.StringIO()
+    # punto e virgola e BOM: e' quello che Excel in configurazione italiana
+    # apre in colonne senza chiedere nulla
+    scrittore = csv.writer(testo, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    scrittore.writerow(
+        [
+            "Data e ora (UTC)",
+            "Operatore",
+            "Bersaglio",
+            "Azione",
+            "Esito",
+            "Dettaglio",
+            "Indirizzo IP",
+        ]
+    )
+    for v in voci:
+        scrittore.writerow(
+            [
+                v["quando"],
+                v["utente"],
+                v["bersaglio"],
+                v["azione"],
+                v["esito"],
+                v["dettaglio"],
+                v["indirizzo_ip"],
+            ]
+        )
+
+    db.registra(
+        "esportazione registro",
+        utente=_utente(),
+        dettaglio=f"{len(voci)} voci" + (f", filtro {filtro}" if filtro else ""),
+        indirizzo_ip=_ip(),
+    )
+    oggi = datetime.now().strftime("%Y%m%d")
+    return send_file(
+        io.BytesIO(testo.getvalue().encode("utf-8-sig")),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=f"registro-navette-{oggi}.csv",
     )
 
 

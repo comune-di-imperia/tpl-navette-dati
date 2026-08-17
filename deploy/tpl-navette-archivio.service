@@ -1,0 +1,18 @@
+[Unit]
+Description=TPL navette - archiviazione mensile del registro attivita' su S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tpl
+Group=tpl
+WorkingDirectory=/opt/tpl-navette
+EnvironmentFile=/etc/tpl-navette/env
+ExecStart=/opt/tpl-navette/.venv/bin/python -m scripts.tpl_navette.cli registro-archivia
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tpl-navette

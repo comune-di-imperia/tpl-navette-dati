@@ -15,6 +15,15 @@
   <noscript><button type="submit">Filtra</button></noscript>
 </form>
 
+<p>
+  <a class="bottone" href="{{ url_for('esporta_registro', utente=filtro) }}">Esporta in CSV</a>
+</p>
+<p class="minuto">
+  A video e nell'esportazione compaiono i mesi ancora in linea. Lo storico
+  completo e' archiviato mensilmente sul bucket S3 del progetto, in
+  <code>registro/AAAA-MM.jsonl.gz</code>.
+</p>
+
 <table class="elenco">
   <thead>
     <tr><th>Quando (UTC)</th><th>Operatore</th><th>Azione</th><th>Esito</th>

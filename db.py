@@ -688,6 +688,45 @@ def leggi_registro(limite: int = 200, utente: str = "") -> List[Dict[str, Any]]:
         return [dict(r) for r in con.execute(sql, par)]
 
 
+def mesi_registro(escluso_corrente: bool = True) -> List[str]:
+    """Mesi presenti nel registro, dal piu' vecchio, come ``AAAA-MM``.
+
+    Il mese in corso si esclude: archiviarlo darebbe una copia incompleta che
+    andrebbe poi riscritta, e una copia riscritta non e' piu' una prova.
+    """
+    corrente = datetime.now(timezone.utc).strftime("%Y-%m")
+    with connessione() as con:
+        mesi = [
+            r[0]
+            for r in con.execute(
+                "SELECT DISTINCT substr(quando, 1, 7) FROM registro ORDER BY 1"
+            )
+        ]
+    return [m for m in mesi if not (escluso_corrente and m == corrente)]
+
+
+def leggi_registro_mese(mese: str) -> List[Dict[str, Any]]:
+    """Tutte le voci di un mese ``AAAA-MM``, in ordine cronologico."""
+    with connessione() as con:
+        return [
+            dict(r)
+            for r in con.execute(
+                "SELECT * FROM registro WHERE substr(quando, 1, 7) = ? ORDER BY id",
+                (mese,),
+            )
+        ]
+
+
+def elimina_registro_mese(mese: str) -> int:
+    """Rimuove le voci di un mese. Il chiamante deve aver gia' verificato che
+    la copia archiviata esista: senza, questa e' una perdita di dati."""
+    with connessione() as con:
+        cur = con.execute(
+            "DELETE FROM registro WHERE substr(quando, 1, 7) = ?", (mese,)
+        )
+        return cur.rowcount
+
+
 def apri_elaborazione(
     utente_id: Optional[int], nome_file: str, dimensione: int, operatore: str = ""
 ) -> int:

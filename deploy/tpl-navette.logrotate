@@ -1,0 +1,24 @@
+# /etc/logrotate.d/tpl-navette
+#
+# I log del sito stanno in una cartella propria e NON in /var/log/apache2:
+# li' il glob di sistema li prenderebbe gia', e due direttive sullo stesso
+# file fanno fallire logrotate con "duplicate log entry".
+#
+# 180 rotazioni giornaliere al posto delle 14 predefinite di apache2: con due
+# settimane non si ricostruisce un accesso a mesi di distanza.
+
+/var/log/tpl-navette/*.log {
+    daily
+    rotate 180
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 640 root adm
+    sharedscripts
+    postrotate
+        if invoke-rc.d apache2 status > /dev/null 2>&1; then
+            invoke-rc.d apache2 reload > /dev/null 2>&1
+        fi
+    endscript
+}
