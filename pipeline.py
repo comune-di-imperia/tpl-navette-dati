@@ -10,15 +10,12 @@ di sperimentazione da conservare, l'elaborato e' derivato e ricostruibile.
 from __future__ import annotations
 
 import os
-import smtplib
-import ssl
 import tempfile
 from datetime import datetime
-from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from . import analisi
+from . import analisi, posta
 
 DATI = Path(os.environ.get("TPL_DATI", "/var/lib/tpl-navette"))
 UPLOAD = DATI / "uploads"
@@ -230,25 +227,5 @@ def invia_email(
     corpo: str,
     allegati: Optional[List[Path]] = None,
 ) -> None:
-    """Invia il report. Porta 587 con STARTTLS: la 25 e' bloccata in uscita."""
-    msg = EmailMessage()
-    msg["From"] = f"TPL Navette Imperia <{os.environ['SMTP_USER']}>"
-    msg["To"] = ", ".join(destinatari)
-    msg["Subject"] = oggetto
-    msg.set_content(corpo)
-
-    for percorso in allegati or []:
-        p = Path(percorso)
-        msg.add_attachment(
-            p.read_bytes(),
-            maintype="application",
-            subtype="octet-stream",
-            filename=p.name,
-        )
-
-    with smtplib.SMTP(
-        os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587")), timeout=60
-    ) as s:
-        s.starttls(context=ssl.create_default_context())
-        s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
-        s.send_message(msg)
+    """Invia il report di elaborazione."""
+    posta.invia(destinatari, oggetto, corpo, allegati)

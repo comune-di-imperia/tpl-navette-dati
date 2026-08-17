@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block titolo %}Utenti{% endblock %}
+{% block contenuto %}
+<h1>Gestione utenti</h1>
+<p class="sottotitolo">
+  Alla creazione non si sceglie una password: all'utente arriva un invito e la
+  imposta lui, così non passa mai per terzi.
+</p>
+
+<h2>Nuova utenza</h2>
+<form class="modulo" method="post" action="{{ url_for('crea_utente') }}">
+  <input type="hidden" name="csrf" value="{{ gettone() }}">
+  <label>Utente <input type="text" name="utente" required></label>
+  <label>Nome e cognome <input type="text" name="nome"></label>
+  <label>Email <input type="email" name="email" required></label>
+  <label>Ruolo
+    <select name="ruolo">
+      {% for codice, nome, descrizione in ruoli %}
+      <option value="{{ codice }}" title="{{ descrizione }}">{{ nome }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Crea e invia l'invito</button>
+</form>
+
+<h2>Utenze</h2>
+<table class="elenco">
+  <thead>
+    <tr><th>Utente</th><th>Nome</th><th>Email</th><th>Ruolo</th><th>Stato</th>
+        <th>Ultimo accesso</th><th>Azioni</th></tr>
+  </thead>
+  <tbody>
+  {% for u in utenti %}
+    <tr>
+      <td><strong>{{ u.utente }}</strong></td>
+      <td>{{ u.nome or '-' }}</td>
+      <td class="dettaglio">{{ u.email }}</td>
+      <td>
+        <form method="post" action="{{ url_for('modifica_utente', utente_id=u.id) }}">
+          <input type="hidden" name="csrf" value="{{ gettone() }}">
+          <input type="hidden" name="azione" value="ruolo">
+          <select name="ruolo" onchange="this.form.submit()">
+            {% for codice, nome, descrizione in ruoli %}
+            <option value="{{ codice }}" {% if u.ruolo == codice %}selected{% endif %}>{{ nome }}</option>
+            {% endfor %}
+          </select>
+        </form>
+      </td>
+      <td>
+        <span class="stato {{ 'completata' if u.stato == 'attivo' else 'fallita' }}">{{ u.stato }}</span>
+        {% if u.bloccato_fino %}<br><span class="stato in_corso">bloccato</span>{% endif %}
+        {% if not u.hash_password %}<br><span class="stato in_corso">da attivare</span>{% endif %}
+      </td>
+      <td class="nowrap">{{ (u.ultimo_accesso or '')[:16].replace('T', ' ') or 'mai' }}</td>
+      <td class="azioni">
+        {% for azione, etichetta in [
+             ('reimposta', 'invia recupero'),
+             ('invito', 'reinvia invito'),
+             ('sospendi', 'sospendi'),
+             ('riattiva', 'riattiva'),
+             ('sblocca', 'sblocca'),
+             ('archivia', 'archivia')] %}
+          {% if (azione != 'riattiva' or u.stato != 'attivo')
+                and (azione != 'sospendi' or u.stato == 'attivo')
+                and (azione != 'sblocca' or u.bloccato_fino)
+                and (azione != 'invito' or not u.hash_password)
+                and (azione != 'archivia' or u.stato != 'archiviato') %}
+          <form method="post" action="{{ url_for('modifica_utente', utente_id=u.id) }}"
+                {% if azione == 'archivia' %}onsubmit="return confirm('Archiviare {{ u.utente }}? Non potrà più accedere.')"{% endif %}>
+            <input type="hidden" name="csrf" value="{{ gettone() }}">
+            <input type="hidden" name="azione" value="{{ azione }}">
+            <button type="submit" class="minimo">{{ etichetta }}</button>
+          </form>
+          {% endif %}
+        {% endfor %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="vuoto">nessuna utenza registrata</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<p class="minuto">
+  {% if archiviati %}
+    <a href="{{ url_for('utenti') }}">nascondi le utenze archiviate</a>
+  {% else %}
+    <a href="{{ url_for('utenti', archiviati=1) }}">mostra anche le archiviate</a>
+  {% endif %}
+</p>
+{% endblock %}

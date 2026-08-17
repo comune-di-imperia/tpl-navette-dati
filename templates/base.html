@@ -15,10 +15,18 @@
   {% if session.utente or accesso_libero() %}
   <nav>
     <a href="{{ url_for('cruscotto') }}" {% if request.endpoint == 'cruscotto' %}class="attivo"{% endif %}>Caricamento</a>
+    {% if ha_permesso('report.scarica') %}
     <a href="{{ url_for('report') }}" {% if request.endpoint == 'report' %}class="attivo"{% endif %}>Report</a>
+    {% endif %}
+    {% if ha_permesso('registro.leggi') %}
     <a href="{{ url_for('registro') }}" {% if request.endpoint == 'registro' %}class="attivo"{% endif %}>Registro</a>
+    {% endif %}
+    {% if ha_permesso('utenti.gestione') %}
+    <a href="{{ url_for('utenti') }}" {% if request.endpoint == 'utenti' %}class="attivo"{% endif %}>Utenti</a>
+    {% endif %}
     {% if session.utente %}
       <span class="chi">{{ session.utente }}</span>
+      <a href="{{ url_for('cambia_password') }}">Password</a>
       <a class="esci" href="{{ url_for('uscita') }}">Esci</a>
     {% else %}
       <span class="chi">accesso consentito per indirizzo IP</span>

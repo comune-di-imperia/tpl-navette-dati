@@ -1,6 +1,6 @@
 """Gestione da riga di comando dell'applicazione TPL navette.
 
-    python3 -m scripts.tpl_navette.cli utente-crea --utente mrossi --ruolo operatore
+    python3 -m scripts.tpl_navette.cli utente-crea --utente mrossi --email m@x.it --invito
     python3 -m scripts.tpl_navette.cli utente-password --utente mrossi
     python3 -m scripts.tpl_navette.cli utenti
     python3 -m scripts.tpl_navette.cli registro --limite 50
@@ -18,7 +18,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import db
+from . import db, permessi
 
 
 def _password(da_stdin: bool) -> str:
@@ -27,8 +27,6 @@ def _password(da_stdin: bool) -> str:
     prima = getpass.getpass("Password: ")
     if prima != getpass.getpass("Ripeti: "):
         sys.exit("le due password non coincidono")
-    if len(prima) < 10:
-        sys.exit("password troppo corta: almeno 10 caratteri")
     return prima
 
 
@@ -36,20 +34,24 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="tpl-navette", description=__doc__)
     sub = p.add_subparsers(dest="comando", required=True)
 
-    c = sub.add_parser("utente-crea", help="crea un operatore")
+    c = sub.add_parser("utente-crea", help="crea un'utenza")
     c.add_argument("--utente", required=True)
     c.add_argument("--nome", default="")
-    c.add_argument("--email", default="")
-    c.add_argument(
-        "--ruolo", default="operatore", choices=["operatore", "amministratore"]
-    )
+    c.add_argument("--email", required=True)
+    c.add_argument("--ruolo", default="tecnico", choices=list(permessi.ETICHETTE))
     c.add_argument("--stdin", action="store_true", help="password da stdin")
+    c.add_argument(
+        "--invito",
+        action="store_true",
+        help="non chiedere la password: invia l'invito per email",
+    )
 
     c = sub.add_parser("utente-password", help="cambia la password di un operatore")
     c.add_argument("--utente", required=True)
     c.add_argument("--stdin", action="store_true")
 
-    sub.add_parser("utenti", help="elenca gli operatori")
+    sub.add_parser("utenti", help="elenca le utenze")
+    sub.add_parser("token-pulisci", help="rimuove i token scaduti")
 
     c = sub.add_parser("registro", help="mostra il registro attivita'")
     c.add_argument("--limite", type=int, default=50)
@@ -63,21 +65,41 @@ def main(argv=None) -> int:
     db.inizializza()
 
     if a.comando == "utente-crea":
-        db.crea_utente(a.utente, _password(a.stdin), a.nome, a.email, a.ruolo)
+        password = "" if a.invito else _password(a.stdin)
+        if password:
+            motivo = db.valuta_politica_password(password, a.utente, a.email)
+            if motivo:
+                sys.exit(motivo)
+        uid = db.crea_utente(a.utente, a.email, a.nome, a.ruolo, password)
         print(f"creato {a.utente} ({a.ruolo})")
+        if a.invito:
+            from . import posta
+
+            token = db.crea_token(uid, "primo_accesso")
+            posta.invia_link_password(a.email, token, "primo_accesso", a.nome)
+            print(f"invito di attivazione inviato a {a.email}")
 
     elif a.comando == "utente-password":
-        if not db.cambia_password(a.utente, _password(a.stdin)):
+        riga = db.leggi_utente(a.utente)
+        if not riga:
             sys.exit(f"utente {a.utente} inesistente")
-        print(f"password aggiornata per {a.utente}")
+        password = _password(a.stdin)
+        motivo = db.valuta_politica_password(password, riga["utente"], riga["email"])
+        if motivo:
+            sys.exit(motivo)
+        db.imposta_password(riga["id"], password)
+        print(f"password aggiornata per {a.utente}; sessioni aperte chiuse")
 
     elif a.comando == "utenti":
-        for u in db.elenco_utenti():
-            stato = "attivo" if u["attivo"] else "disattivato"
+        for u in db.elenco_utenti(includi_archiviati=True):
+            attivazione = "" if u["hash_password"] else "  (da attivare)"
             print(
-                f"{u['utente']:<20} {u['ruolo']:<15} {stato:<12} "
-                f"ultimo accesso: {u['ultimo_accesso'] or 'mai'}"
+                f"{u['utente']:<20} {u['ruolo']:<16} {u['stato']:<12} "
+                f"ultimo accesso: {u['ultimo_accesso'] or 'mai'}{attivazione}"
             )
+
+    elif a.comando == "token-pulisci":
+        print(f"token rimossi: {db.pulisci_token()}")
 
     elif a.comando == "registro":
         for v in db.leggi_registro(a.limite, a.utente):

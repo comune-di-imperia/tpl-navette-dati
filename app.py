@@ -18,16 +18,19 @@ import queue
 import re
 import secrets
 import threading
+import time
 import zipfile
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from typing import Optional
 
 from flask import (
     Flask,
     abort,
     flash,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -37,7 +40,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from . import analisi, db, pipeline
+from . import analisi, db, permessi, pipeline, posta
 
 logger = logging.getLogger("tpl.app")
 
@@ -64,17 +67,38 @@ _percorsi: dict[int, Path] = {}
 
 # --------------------------------------------------------------------- accesso
 def accesso_libero() -> bool:
-    """Vero finche' non esiste nessun operatore registrato.
+    """Vero finche' non esiste nessuna utenza attiva.
 
     In questa fase l'applicazione e' raggiungibile solo da indirizzi autorizzati
     dal firewall del VPS, quindi la lista utenti sarebbe un ostacolo senza
-    guadagno. Appena si crea il primo operatore con ``cli utente-crea`` le
-    credenziali tornano obbligatorie da sole, senza cambiare configurazione.
-    ``TPL_RICHIEDI_ACCESSO=1`` forza comunque l'autenticazione.
+    guadagno. Appena si crea il primo utente le credenziali tornano obbligatorie
+    da sole, senza cambiare configurazione; ``TPL_RICHIEDI_ACCESSO=1`` le impone
+    comunque.
     """
     if os.environ.get("TPL_RICHIEDI_ACCESSO", "0") == "1":
         return False
     return not db.esistono_utenti()
+
+
+def utente_corrente() -> Optional[dict]:
+    """Utente della sessione, rileggendolo dal database a ogni richiesta.
+
+    E' questa rilettura a rendere IMMEDIATI sospensione e cambio di ruolo:
+    fidandosi di quanto scritto nel cookie all'accesso, un utente sospeso
+    continuerebbe a lavorare finche' la sessione non scade.
+    """
+    uid = session.get("utente_id")
+    if not uid:
+        return None
+    riga = db.leggi_utente_per_id(uid)
+    if (
+        not riga
+        or riga["stato"] != "attivo"
+        or riga["epoca_sessione"] != session.get("epoca")
+    ):
+        session.clear()
+        return None
+    return riga
 
 
 def _utente() -> str:
@@ -86,14 +110,60 @@ def _utente() -> str:
     return session.get("utente") or f"IP {_ip()}"
 
 
-def richiede_accesso(f):
-    @wraps(f)
-    def guardia(*a, **kw):
-        if "utente_id" not in session and not accesso_libero():
-            return redirect(url_for("accesso", prossima=request.path))
-        return f(*a, **kw)
+def _ha_permesso(permesso: str) -> bool:
+    if accesso_libero():
+        return True  # nessuna utenza: la protezione e' il filtro sugli IP
+    riga = utente_corrente()
+    return bool(riga and permessi.puo(riga["ruolo"], permesso))
 
-    return guardia
+
+def richiede_permesso(permesso: str):
+    """Protegge la rotta. Va messo su TUTTE, comprese quelle che tornano JSON:
+    nascondere una voce di menu non impedisce di richiamare l'indirizzo."""
+
+    def decoratore(f):
+        @wraps(f)
+        def guardia(*a, **kw):
+            if accesso_libero():
+                return f(*a, **kw)
+            riga = utente_corrente()
+            if not riga:
+                return redirect(url_for("accesso", prossima=request.path))
+            if not permessi.puo(riga["ruolo"], permesso):
+                db.registra(
+                    "accesso negato",
+                    utente=riga["utente"],
+                    esito="rifiutato",
+                    dettaglio=permesso,
+                    indirizzo_ip=_ip(),
+                )
+                abort(403)
+            return f(*a, **kw)
+
+        return guardia
+
+    return decoratore
+
+
+# retrocompatibilita' interna: le rotte di sola lettura chiedono il permesso
+# minimo di consultazione
+def richiede_accesso(f):
+    return richiede_permesso(permessi.LEGGE_DATI)(f)
+
+
+# ------------------------------------------------------- limitazione richieste
+# Due contatori distinti: per utenza contro la forza bruta mirata, per indirizzo
+# contro il credential stuffing su molte utenze. In memoria perche' il servizio
+# gira volutamente in un solo processo (vedi intestazione del modulo).
+_tentativi: dict[str, list[float]] = {}
+
+
+def limite_consentito(chiave: str, massimo: int, finestra_s: int) -> bool:
+    adesso = time.monotonic()
+    eventi = [t for t in _tentativi.get(chiave, []) if adesso - t < finestra_s]
+    eventi.append(adesso)
+    _tentativi[chiave] = eventi
+    return len(eventi) <= massimo
 
 
 def _ip() -> str:
@@ -117,32 +187,62 @@ def _verifica_gettone() -> None:
 
 app.jinja_env.globals["gettone"] = _gettone
 app.jinja_env.globals["accesso_libero"] = accesso_libero
+# il template NASCONDE cio' che l'utente non puo' fare; a impedirlo davvero e'
+# il decoratore sulla rotta, non questo
+app.jinja_env.globals["ha_permesso"] = _ha_permesso
 
 
 @app.route("/accesso", methods=["GET", "POST"])
 def accesso():
     if accesso_libero():
         return redirect(url_for("cruscotto"))
-    if request.method == "POST":
-        utente = (request.form.get("utente") or "").strip()
-        password = request.form.get("password") or ""
-        riga = db.verifica_credenziali(utente, password)
-        if not riga:
-            db.registra("accesso", utente=utente, esito="rifiutato", indirizzo_ip=_ip())
-            flash("Credenziali non valide.", "errore")
-            return render_template("accesso.html"), 401
+    if request.method != "POST":
+        return render_template("accesso.html")
 
-        session.clear()
-        session.permanent = True
-        session["utente_id"] = riga["id"]
-        session["utente"] = riga["utente"]
-        session["ruolo"] = riga["ruolo"]
-        db.registra("accesso", utente=riga["utente"], indirizzo_ip=_ip())
+    utente = (request.form.get("utente") or "").strip()
+    password = request.form.get("password") or ""
 
-        prossima = request.args.get("prossima", "")
-        # solo percorsi interni: evita di essere usati come trampolino
-        return redirect(prossima if prossima.startswith("/") else url_for("cruscotto"))
-    return render_template("accesso.html")
+    if not limite_consentito(f"accesso-ip:{_ip()}", massimo=20, finestra_s=3600):
+        db.registra(
+            "accesso",
+            utente=utente,
+            esito="rifiutato",
+            dettaglio="troppi tentativi dall'indirizzo",
+            indirizzo_ip=_ip(),
+        )
+        return render_template("accesso.html", errore=_ERRORE_ACCESSO), 429
+
+    esito = db.verifica_credenziali(utente, password)
+    riga = esito["utente"]
+    if not riga:
+        # il motivo va nel registro, MAI a video: distinguere "utenza
+        # inesistente" da "password errata" regala l'elenco degli iscritti
+        db.registra(
+            "accesso",
+            utente=utente or "(vuoto)",
+            esito="rifiutato",
+            dettaglio=esito["motivo"],
+            indirizzo_ip=_ip(),
+        )
+        return render_template("accesso.html", errore=_ERRORE_ACCESSO), 401
+
+    # azzeramento prima di scrivere: impedisce la session fixation, in cui
+    # l'attaccante impone alla vittima una sessione che conosce gia'
+    session.clear()
+    session.permanent = True
+    session["utente_id"] = riga["id"]
+    session["utente"] = riga["utente"]
+    session["epoca"] = riga["epoca_sessione"]
+    db.registra("accesso", utente=riga["utente"], indirizzo_ip=_ip())
+
+    if riga["deve_cambiare_password"]:
+        return redirect(url_for("cambia_password"))
+    prossima = request.args.get("prossima", "")
+    # solo percorsi interni: evita di essere usati come trampolino
+    return redirect(prossima if prossima.startswith("/") else url_for("cruscotto"))
+
+
+_ERRORE_ACCESSO = "Credenziali non valide."
 
 
 @app.route("/uscita")
@@ -151,6 +251,49 @@ def uscita():
         db.registra("uscita", utente=session["utente"], indirizzo_ip=_ip())
     session.clear()
     return redirect(url_for("accesso"))
+
+
+@app.route("/password/cambia", methods=["GET", "POST"])
+def cambia_password():
+    riga = utente_corrente()
+    if not riga:
+        return redirect(url_for("accesso"))
+    if request.method != "POST":
+        return render_template("cambia_password.html")
+
+    _verifica_gettone()
+    attuale = request.form.get("attuale") or ""
+    nuova = request.form.get("password") or ""
+
+    valida, _ = db.verifica_password(attuale, riga["hash_password"])
+    if not valida:
+        return (
+            render_template(
+                "cambia_password.html", errore="La password attuale non e' corretta."
+            ),
+            400,
+        )
+
+    motivo = db.valuta_politica_password(nuova, riga["utente"], riga["email"])
+    if motivo:
+        return render_template("cambia_password.html", errore=motivo.capitalize()), 400
+
+    db.imposta_password(riga["id"], nuova)
+    db.registra("password cambiata", utente=riga["utente"], indirizzo_ip=_ip())
+    _avvisa(riga)
+    # imposta_password ha incrementato l'epoca: la sessione corrente e' scaduta
+    session.clear()
+    flash("Password aggiornata: accedi con quella nuova.", "esito")
+    return redirect(url_for("accesso"))
+
+
+def _avvisa(riga: dict) -> None:
+    """Notifica di cambio password. Un guasto SMTP non deve far fallire il
+    cambio, che a quel punto e' gia' avvenuto: si annota e si prosegue."""
+    try:
+        posta.avvisa_cambio_password(riga["email"], riga["nome"])
+    except Exception as e:
+        logger.warning("avviso di cambio password non inviato", exc_info=e)
 
 
 # -------------------------------------------------------------------- cruscotto
@@ -163,7 +306,7 @@ def cruscotto():
 
 
 @app.route("/carica", methods=["POST"])
-@richiede_accesso
+@richiede_permesso(permessi.CARICA_DATI)
 def carica():
     _verifica_gettone()
     caricato = request.files.get("archivio")
@@ -284,7 +427,7 @@ def dettaglio(elab_id: int):
 
 
 @app.route("/report")
-@richiede_accesso
+@richiede_permesso(permessi.SCARICA_REPORT)
 def report():
     voci = db.elenco_elaborazioni(limite=1000, solo_con_report=True)
     for v in voci:
@@ -305,7 +448,7 @@ def _percorso_report(nome: str) -> Path:
 
 
 @app.route("/report/<int:elab_id>")
-@richiede_accesso
+@richiede_permesso(permessi.SCARICA_REPORT)
 def scarica_report(elab_id: int):
     riga = db.leggi_elaborazione(elab_id)
     if not riga or not riga["pdf"]:
@@ -320,7 +463,7 @@ def scarica_report(elab_id: int):
 
 
 @app.route("/report/tutti.zip")
-@richiede_accesso
+@richiede_permesso(permessi.SCARICA_REPORT)
 def scarica_tutti_i_report():
     voci = db.elenco_elaborazioni(limite=1000, solo_con_report=True)
     memoria = io.BytesIO()
@@ -354,7 +497,7 @@ def scarica_tutti_i_report():
 
 
 @app.route("/registro")
-@richiede_accesso
+@richiede_permesso(permessi.LEGGE_REGISTRO)
 def registro():
     filtro = request.args.get("utente", "")
     return render_template(
@@ -362,6 +505,276 @@ def registro():
         voci=db.leggi_registro(limite=500, utente=filtro),
         filtro=filtro,
         utenti=db.elenco_utenti(),
+    )
+
+
+# ------------------------------------------------------ recupero password
+@app.route("/password/richiedi", methods=["GET", "POST"])
+def richiedi_password():
+    if request.method != "POST":
+        return render_template("password_richiedi.html")
+    _verifica_gettone()
+
+    email = (request.form.get("email") or "").strip().lower()
+    if not limite_consentito(f"reset-ip:{_ip()}", massimo=5, finestra_s=3600):
+        return (
+            render_template(
+                "password_richiedi.html", errore="Troppe richieste: riprova fra un'ora."
+            ),
+            429,
+        )
+
+    riga = db.leggi_utente_per_email(email)
+    # solo un'utenza attiva riceve il link; sospesa o archiviata, nessun invio
+    if riga and riga["stato"] == "attivo":
+        token = db.crea_token(
+            riga["id"],
+            "reset",
+            ip=_ip(),
+            agente=request.headers.get("User-Agent", ""),
+        )
+        try:
+            posta.invia_link_password(riga["email"], token, "reset", riga["nome"])
+        except Exception as e:
+            logger.error("invio del link di recupero fallito", exc_info=e)
+
+    db.registra(
+        "richiesta recupero password", utente=email or "(vuoto)", indirizzo_ip=_ip()
+    )
+
+    # RISPOSTA IDENTICA in ogni caso - esistente, inesistente, sospeso:
+    # altrimenti chiunque puo' scoprire quali indirizzi sono registrati
+    return render_template("password_inviata.html")
+
+
+@app.route("/password/reimposta/<token>", methods=["GET", "POST"])
+def reimposta_password(token: str):
+    if request.method != "POST":
+        # la GET verifica ma NON consuma: il precaricamento del link fatto da
+        # certi client di posta o antivirus brucerebbe il token prima che
+        # l'utente veda il modulo
+        voce = db.verifica_token(token)
+        if not voce:
+            return render_template("password_reimposta.html", scaduto=True), 400
+        risposta = make_response(
+            render_template(
+                "password_reimposta.html",
+                token=token,
+                primo_accesso=voce["tipo"] == "primo_accesso",
+            )
+        )
+        # il token e' nell'indirizzo: senza questo finirebbe nell'intestazione
+        # Referer verso qualunque risorsa esterna
+        risposta.headers["Referrer-Policy"] = "no-referrer"
+        return risposta
+
+    _verifica_gettone()
+    nuova = request.form.get("password") or ""
+
+    voce = db.verifica_token(token)
+    if not voce:
+        return render_template("password_reimposta.html", scaduto=True), 400
+
+    utente = db.leggi_utente_per_id(voce["utente_id"])
+    motivo = db.valuta_politica_password(nuova, utente["utente"], utente["email"])
+    if motivo:
+        # politica prima del consumo: un rifiuto per password debole non deve
+        # bruciare il token e costringere a rifare tutta la richiesta
+        return (
+            render_template(
+                "password_reimposta.html", token=token, errore=motivo.capitalize()
+            ),
+            400,
+        )
+
+    utente = db.consuma_token(token)
+    if not utente:
+        return render_template("password_reimposta.html", scaduto=True), 400
+
+    db.imposta_password(utente["id"], nuova)
+    db.registra("password reimpostata", utente=utente["utente"], indirizzo_ip=_ip())
+    _avvisa(utente)
+    flash("Password impostata: ora puoi accedere.", "esito")
+    return redirect(url_for("accesso"))
+
+
+# ------------------------------------------------------ area amministratori
+@app.route("/amministrazione/utenti")
+@richiede_permesso(permessi.GESTIONE_UTENTI)
+def utenti():
+    return render_template(
+        "utenti.html",
+        utenti=db.elenco_utenti(
+            includi_archiviati=request.args.get("archiviati") == "1"
+        ),
+        ruoli=permessi.RUOLI,
+        archiviati=request.args.get("archiviati") == "1",
+    )
+
+
+@app.route("/amministrazione/utenti/crea", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_UTENTI)
+def crea_utente():
+    _verifica_gettone()
+    nome_utente = (request.form.get("utente") or "").strip()
+    email = (request.form.get("email") or "").strip().lower()
+    ruolo = request.form.get("ruolo") or permessi.TECNICO
+
+    if not nome_utente or not email:
+        flash("Nome utente e indirizzo email sono obbligatori.", "errore")
+        return redirect(url_for("utenti"))
+    if ruolo not in permessi.ETICHETTE:
+        abort(400)
+
+    io_stesso = utente_corrente()
+    try:
+        uid = db.crea_utente(
+            nome_utente,
+            email,
+            request.form.get("nome", ""),
+            ruolo,
+            creato_da=io_stesso["id"] if io_stesso else None,
+        )
+    except db.UtenteDuplicato as e:
+        flash(str(e).capitalize() + ".", "errore")
+        return redirect(url_for("utenti"))
+
+    db.registra(
+        "creazione utenza",
+        utente=_utente(),
+        bersaglio=nome_utente,
+        dettaglio=f"ruolo {ruolo}",
+        indirizzo_ip=_ip(),
+    )
+    # nessuna password scelta da altri: si invia un invito e la sceglie il
+    # titolare, cosi' non esiste il momento in cui due persone la conoscono
+    _invia_invito(uid, nome_utente)
+    return redirect(url_for("utenti"))
+
+
+def _invia_invito(utente_id: int, nome_utente: str) -> None:
+    riga = db.leggi_utente_per_id(utente_id)
+    token = db.crea_token(utente_id, "primo_accesso", ip=_ip())
+    try:
+        posta.invia_link_password(riga["email"], token, "primo_accesso", riga["nome"])
+        flash(
+            f"Utenza {nome_utente} creata: invito inviato a {riga['email']}.", "esito"
+        )
+    except Exception as e:
+        logger.error("invio dell'invito fallito", exc_info=e)
+        flash(
+            f"Utenza {nome_utente} creata, ma l'invito NON e' partito "
+            "(posta non configurata o irraggiungibile): usa 'reinvia invito'.",
+            "errore",
+        )
+
+
+@app.route("/amministrazione/utenti/<int:utente_id>", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_UTENTI)
+def modifica_utente(utente_id: int):
+    _verifica_gettone()
+    bersaglio = db.leggi_utente_per_id(utente_id)
+    if not bersaglio:
+        abort(404)
+    io_stesso = utente_corrente()
+    azione = request.form.get("azione", "")
+
+    try:
+        if azione == "anagrafica":
+            db.aggiorna_anagrafica(
+                utente_id, request.form.get("nome", ""), request.form.get("email", "")
+            )
+            _annota("modifica anagrafica", bersaglio)
+
+        elif azione == "ruolo":
+            nuovo = request.form.get("ruolo", "")
+            if nuovo not in permessi.ETICHETTE:
+                abort(400)
+            # un amministratore non cambia il PROPRIO ruolo: toglie una classe
+            # intera di autoesclusioni e non costa nulla, c'e' sempre un collega
+            if io_stesso and io_stesso["id"] == utente_id:
+                flash("Non puoi cambiare il tuo ruolo: chiedi a un collega.", "errore")
+                return redirect(url_for("utenti"))
+            db.cambia_stato_o_ruolo(utente_id, nuovo_ruolo=nuovo)
+            _annota("modifica ruolo", bersaglio, f"{bersaglio['ruolo']} -> {nuovo}")
+
+        elif azione in ("sospendi", "riattiva", "archivia"):
+            stato = {
+                "sospendi": "sospeso",
+                "riattiva": "attivo",
+                "archivia": "archiviato",
+            }[azione]
+            db.cambia_stato_o_ruolo(utente_id, nuovo_stato=stato)
+            _annota(f"utenza {stato}", bersaglio)
+
+        elif azione == "sblocca":
+            db.sblocca(utente_id)
+            _annota("sblocco utenza", bersaglio)
+
+        elif azione == "reimposta":
+            token = db.crea_token(utente_id, "reset", ip=_ip())
+            posta.invia_link_password(
+                bersaglio["email"], token, "reset", bersaglio["nome"]
+            )
+            _annota("invio link di recupero", bersaglio)
+            flash(f"Link inviato a {bersaglio['email']}.", "esito")
+
+        elif azione == "invito":
+            _invia_invito(utente_id, bersaglio["utente"])
+        else:
+            abort(400)
+
+    except db.UltimoAmministratore as e:
+        db.registra(
+            "modifica utenza",
+            utente=_utente(),
+            bersaglio=bersaglio["utente"],
+            esito="rifiutato",
+            dettaglio=str(e),
+            indirizzo_ip=_ip(),
+        )
+        flash(str(e).capitalize() + ".", "errore")
+    except db.UtenteDuplicato as e:
+        flash(str(e).capitalize() + ".", "errore")
+    except posta.PostaNonConfigurata as e:
+        flash(f"Posta non configurata: {e}", "errore")
+
+    return redirect(url_for("utenti"))
+
+
+def _annota(azione: str, bersaglio: dict, dettaglio: str = "") -> None:
+    db.registra(
+        azione,
+        utente=_utente(),
+        bersaglio=bersaglio["utente"],
+        dettaglio=dettaglio,
+        indirizzo_ip=_ip(),
+    )
+
+
+@app.route("/api/io")
+def io_stesso():
+    """Permessi dell'utente corrente: il frontend ci costruisce i menu.
+
+    Rispecchia le decisioni del backend, non le prende: ogni rotta verifica
+    comunque per conto proprio.
+    """
+    if accesso_libero():
+        return jsonify(
+            utente=None,
+            accesso_libero=True,
+            permessi=sorted(permessi.PERMESSI[permessi.AMMINISTRATORE]),
+        )
+    riga = utente_corrente()
+    if not riga:
+        return jsonify(errore="non autenticato"), 401
+    return jsonify(
+        utente=riga["utente"],
+        nome=riga["nome"],
+        ruolo=riga["ruolo"],
+        ruolo_nome=riga["ruolo_nome"],
+        accesso_libero=False,
+        permessi=permessi.elenco_permessi(riga["ruolo"]),
     )
 
 

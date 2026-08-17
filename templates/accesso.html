@@ -3,6 +3,7 @@
 {% block contenuto %}
 <div class="accesso">
   <h1>Accesso</h1>
+  {% if errore %}<div class="avviso errore">{{ errore }}</div>{% endif %}
   <form method="post">
     <input type="hidden" name="csrf" value="{{ gettone() }}">
     <label>Utente
@@ -13,5 +14,8 @@
     </label>
     <button type="submit">Entra</button>
   </form>
+  <p class="minuto">
+    <a href="{{ url_for('richiedi_password') }}">Password dimenticata?</a>
+  </p>
 </div>
 {% endblock %}
