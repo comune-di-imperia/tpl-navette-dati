@@ -93,7 +93,7 @@ window.addEventListener('beforeunload', ev => {
   }
 });
 
-function invia(insieme, chiave) {
+function invia(insieme, chiave, forzato) {
   const nomi = insieme.map(f => f.name);
   const li = riga(insieme.length === 1 ? nomi[0] : `${chiave} (${nomi.length} file)`);
   const barra = li.querySelector('.barra i');
@@ -101,7 +101,8 @@ function invia(insieme, chiave) {
 
   const dati = new FormData();
   for (const f of insieme) dati.append('archivio', f);
-  dati.append('csrf', GETTONE);
+  dati.append("csrf", GETTONE);
+  if (forzato) dati.append("forza", "1");
 
   inVolo += 1;
   const xhr = new XMLHttpRequest();
@@ -114,6 +115,17 @@ function invia(insieme, chiave) {
     inVolo -= 1;   // il file e' arrivato: da qui in poi lavora il server
     let r = {};
     try { r = JSON.parse(xhr.responseText); } catch (e) { /* risposta non JSON */ }
+    if (xhr.status === 409 && !forzato) {
+      // stesso contenuto gia' elaborato: si offre di rifarlo, non si impone
+      li.classList.add('parziale');
+      esito.textContent = r.errore + ' — ';
+      const rifai = document.createElement('a');
+      rifai.href = '#';
+      rifai.textContent = 'rielabora comunque';
+      rifai.onclick = ev => { ev.preventDefault(); li.remove(); invia(insieme, chiave, true); };
+      esito.appendChild(rifai);
+      return;
+    }
     if (xhr.status !== 202) {
       li.classList.add('fallita');
       esito.textContent = r.errore || ('errore ' + xhr.status);

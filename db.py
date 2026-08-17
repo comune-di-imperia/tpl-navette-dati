@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS elaborazioni (
     riepilogo     TEXT NOT NULL DEFAULT '{}',
     chiave_s3     TEXT NOT NULL DEFAULT '',
     pdf           TEXT NOT NULL DEFAULT '',
+    -- SHA-256 del contenuto caricato: riconosce lo stesso file ricaricato
+    -- anche se rinominato
+    impronta      TEXT NOT NULL DEFAULT '',
     iniziata_il   TEXT NOT NULL,
     conclusa_il   TEXT
 );
@@ -178,6 +181,15 @@ def _colonne_mancanti(con) -> None:
         con.execute(
             "ALTER TABLE registro ADD COLUMN bersaglio TEXT NOT NULL DEFAULT ''"
         )
+    if "impronta" not in _colonne(con, "elaborazioni"):
+        con.execute(
+            "ALTER TABLE elaborazioni ADD COLUMN impronta TEXT NOT NULL DEFAULT ''"
+        )
+    # l'indice va creato QUI e non nello schema: su un database gia' in
+    # esercizio lo schema gira prima che la colonna esista
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_elab_impronta ON elaborazioni(impronta)"
+    )
 
 
 def _copia_utenti(con) -> None:
@@ -734,14 +746,46 @@ def elimina_registro_mese(mese: str) -> int:
         return cur.rowcount
 
 
+def impronta_file(percorsi: List[Path]) -> str:
+    """SHA-256 del contenuto caricato, indipendente dal nome dei file.
+
+    I file si leggono in ordine di nome e a blocchi: cosi' due caricamenti
+    dello stesso materiale danno la stessa impronta anche se selezionati in
+    ordine diverso, e 150 MB non finiscono in memoria.
+    """
+    somma = hashlib.sha256()
+    for percorso in sorted(percorsi, key=lambda p: p.name):
+        with open(percorso, "rb") as f:
+            while blocco := f.read(4 << 20):
+                somma.update(blocco)
+    return somma.hexdigest()
+
+
+def elaborazione_con_impronta(impronta: str) -> Optional[Dict[str, Any]]:
+    """Elaborazione gia' conclusa con lo stesso contenuto, se esiste."""
+    if not impronta:
+        return None
+    with connessione() as con:
+        r = con.execute(
+            "SELECT * FROM elaborazioni WHERE impronta=? AND stato='completata' "
+            "ORDER BY id LIMIT 1",
+            (impronta,),
+        ).fetchone()
+        return dict(r) if r else None
+
+
 def apri_elaborazione(
-    utente_id: Optional[int], nome_file: str, dimensione: int, operatore: str = ""
+    utente_id: Optional[int],
+    nome_file: str,
+    dimensione: int,
+    operatore: str = "",
+    impronta: str = "",
 ) -> int:
     with connessione() as con:
         cur = con.execute(
             "INSERT INTO elaborazioni (utente_id, operatore, nome_file, dimensione, "
-            "iniziata_il) VALUES (?,?,?,?,?)",
-            (utente_id, operatore, nome_file, dimensione, _adesso()),
+            "impronta, iniziata_il) VALUES (?,?,?,?,?,?)",
+            (utente_id, operatore, nome_file, dimensione, impronta, _adesso()),
         )
         return cur.lastrowid
 

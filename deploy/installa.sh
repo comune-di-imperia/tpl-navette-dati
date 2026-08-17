@@ -38,7 +38,7 @@ if [ ! -f "$DESTINAZIONE/.venv/bin/python" ]; then
 fi
 "$DESTINAZIONE/.venv/bin/pip" install --quiet --upgrade pip
 "$DESTINAZIONE/.venv/bin/pip" install --quiet \
-    flask gunicorn pandas tables boto3 weasyprint
+    flask gunicorn pandas tables boto3 weasyprint pyzipper
 
 chown -R root:root "$DESTINAZIONE"
 chown -R tpl:tpl "$DATI"

@@ -164,8 +164,37 @@ ESTENSIONI_TAR = (".tar.gz", ".tgz")
 ESTENSIONI_ARCHIVIO = ESTENSIONI_TAR + (".zip",)
 
 
+# Alcune navette consegnano ZIP protetti da password con cifratura WinZip AES
+# (metodo 99, campo extra 0x9901): la libreria standard non la sa aprire, serve
+# pyzipper. La password si configura, non si mette nel codice.
+PASSWORD_ZIP = os.environ.get("TPL_ZIP_PASSWORD", "")
+
+
+class ArchivioProtetto(ArchivioNonValido):
+    """Archivio cifrato e password non disponibile o errata."""
+
+
 def e_tar(nome: str) -> bool:
     return nome.lower().endswith(ESTENSIONI_TAR)
+
+
+def _apri_zip(sorgente):
+    """ZipFile che sa aprire anche gli archivi cifrati, quando c'e' la password."""
+    if not PASSWORD_ZIP:
+        return zipfile.ZipFile(sorgente)
+    try:
+        import pyzipper
+
+        z = pyzipper.AESZipFile(sorgente)
+    except ImportError:
+        # senza pyzipper resta la cifratura storica ZipCrypto, non l'AES
+        z = zipfile.ZipFile(sorgente)
+    z.setpassword(PASSWORD_ZIP.encode())
+    return z
+
+
+def _cifrato(z) -> bool:
+    return any(i.flag_bits & 0x1 for i in z.infolist())
 
 
 def e_archivio(nome: str) -> bool:
@@ -201,7 +230,7 @@ def _estrai_in(percorso: Path, dove: Path, profondita: int = 2) -> None:
         with tarfile.open(percorso, "r:gz") as t:
             t.extractall(dove)
     else:
-        with zipfile.ZipFile(percorso) as z:
+        with _apri_zip(percorso) as z:
             z.extractall(dove)
 
     if profondita <= 0 or next(iter(dove.rglob("*.h5")), None):
@@ -231,7 +260,7 @@ def estrai_archivio(sorgente: Path, destinazione: Path) -> Dict[str, Path]:
         # un computer solo: si guarda cosa c'e' dentro prima di decidere
         aperto = destinazione / "_contenitore"
         try:
-            with zipfile.ZipFile(sorgente) as z:
+            with _apri_zip(sorgente) as z:
                 danneggiato = z.testzip()
                 if danneggiato:
                     raise ArchivioNonValido(f"voce ZIP corrotta: {danneggiato}")
@@ -642,7 +671,7 @@ def analizza_archivio(zip_path: Path, lavoro: Path) -> Esito:
     if zip_path.is_dir() or e_tar(zip_path.name):
         nomi = [p.name for p in componenti(zip_path)]
     else:
-        with zipfile.ZipFile(zip_path) as z:
+        with _apri_zip(zip_path) as z:
             nomi = [n for n in z.namelist() if e_tar(n)]
     attesi = {_pc_di(n, i) for i, n in enumerate(sorted(nomi), start=1)}
     for pc in sorted(attesi - set(trovati)):
@@ -750,7 +779,12 @@ def verifica_integrita(zip_path: Path) -> Dict[str, str]:
     def _controlla_zip(apri) -> str:
         """CRC di tutte le voci, piu' i tar.gz eventualmente contenuti."""
         try:
-            with zipfile.ZipFile(apri()) as z:
+            with _apri_zip(apri()) as z:
+                if _cifrato(z) and not PASSWORD_ZIP:
+                    return (
+                        "archivio protetto da password: la chiave non e' "
+                        "configurata sul server"
+                    )
                 rotta = z.testzip()
                 if rotta:
                     return f"voce interna corrotta: {rotta}"
@@ -760,6 +794,9 @@ def verifica_integrita(zip_path: Path) -> Dict[str, str]:
                         if motivo:
                             return motivo
                 return ""
+        except RuntimeError as e:
+            # zipfile solleva RuntimeError su archivio cifrato o password errata
+            return f"archivio protetto da password ({e})"
         except (zipfile.BadZipFile, OSError, EOFError) as e:
             return f"archivio illeggibile ({type(e).__name__})"
 
@@ -784,7 +821,12 @@ def verifica_integrita(zip_path: Path) -> Dict[str, str]:
 
     # ZIP singolo: puo' raccogliere i due computer o essere gia' quello di uno
     try:
-        with zipfile.ZipFile(zip_path) as z:
+        with _apri_zip(zip_path) as z:
+            if _cifrato(z) and not PASSWORD_ZIP:
+                return {
+                    "pc1": "archivio protetto da password: la chiave non e' "
+                    "configurata sul server"
+                }
             rotta = z.testzip()
             if rotta:
                 raise ArchivioNonValido(f"voce ZIP corrotta: {rotta}")
@@ -804,5 +846,8 @@ def verifica_integrita(zip_path: Path) -> Dict[str, str]:
                     else _controlla_zip(lambda n=nome: io.BytesIO(z.read(n)))
                 )
             return esiti
+    except RuntimeError as e:
+        # zipfile segnala cosi' l'archivio cifrato o la password errata
+        return {"pc1": f"archivio protetto da password ({e})"}
     except zipfile.BadZipFile as e:
         raise ArchivioNonValido(f"file ZIP illeggibile: {e}") from e

@@ -391,6 +391,31 @@ def carica():
     )
     dimensione = sum((cartella / n).stat().st_size for n in nomi)
 
+    # Stesso contenuto gia' elaborato? Si riconosce dall'impronta, non dal nome:
+    # un file rinominato resta lo stesso file. Il ricarico si puo' comunque
+    # forzare, perche' a volte serve rifare l'elaborazione con codice nuovo.
+    impronta = db.impronta_file([cartella / n for n in nomi])
+    if request.form.get("forza") != "1":
+        gia = db.elaborazione_con_impronta(impronta)
+        if gia:
+            shutil.rmtree(cartella, ignore_errors=True)
+            quando = (gia["conclusa_il"] or gia["iniziata_il"])[:16].replace("T", " ")
+            db.registra(
+                "caricamento",
+                utente=_utente(),
+                esito="rifiutato",
+                dettaglio=f"{etichetta}: gia' elaborato ({gia['id']})",
+                indirizzo_ip=_ip(),
+            )
+            return (
+                jsonify(
+                    errore=f"questo contenuto e' gia' stato elaborato il {quando} "
+                    f"come «{gia['nome_file']}»",
+                    duplicato=gia["id"],
+                ),
+                409,
+            )
+
     # Controllo d'integrita' prima di accodare: costa meno di un secondo e
     # risparmia all'operatore un'elaborazione che fallirebbe comunque. Un
     # archivio rovinato alla fonte va rimandato indietro subito, non archiviato.
@@ -417,10 +442,20 @@ def carica():
             dettaglio=f"{nome}: tutti i computer di bordo danneggiati",
             indirizzo_ip=_ip(),
         )
+        # cifrato e danneggiato richiedono due rimedi diversi: chiedere la
+        # password a chi produce i file, oppure farsi rimandare l'archivio
+        protetto = all("password" in m for m in rovinati.values())
         return (
             jsonify(
-                errore="archivio inutilizzabile: nessun computer di bordo leggibile. "
-                "Il file e' danneggiato all'origine, va richiesto di nuovo."
+                errore=(
+                    "archivio protetto da password: la chiave non e' configurata "
+                    "sul server. Va richiesta a chi produce i file e impostata "
+                    "in TPL_ZIP_PASSWORD."
+                    if protetto
+                    else "archivio inutilizzabile: nessun computer di bordo "
+                    "leggibile. Il file e' danneggiato all'origine, va richiesto "
+                    "di nuovo."
+                )
             ),
             400,
         )
@@ -434,7 +469,11 @@ def carica():
     )
 
     elab_id = db.apri_elaborazione(
-        session.get("utente_id"), etichetta, dimensione, operatore=_utente()
+        session.get("utente_id"),
+        etichetta,
+        dimensione,
+        operatore=_utente(),
+        impronta=impronta,
     )
     db.registra(
         "caricamento",
