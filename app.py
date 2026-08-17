@@ -28,6 +28,7 @@ from typing import Optional
 
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     jsonify,
@@ -37,11 +38,12 @@ from flask import (
     request,
     send_file,
     session,
+    stream_with_context,
     url_for,
 )
 from werkzeug.utils import secure_filename
 
-from . import analisi, db, permessi, pipeline, posta
+from . import analisi, db, esplora, permessi, pipeline, posta
 
 logger = logging.getLogger("tpl.app")
 
@@ -495,6 +497,77 @@ def scarica_tutti_i_report():
         as_attachment=True,
         download_name="report-navette.zip",
     )
+
+
+# ------------------------------------------------------------ archivio su S3
+def _consenti_prefisso(chiave: str) -> None:
+    """Alcuni rami dell'archivio non sono per tutti.
+
+    Il controllo va rifatto sulla CHIAVE al momento dello scarico, non solo
+    sull'elenco: nascondere una cartella non impedisce di indovinarne il nome.
+    """
+    permesso = esplora.permesso_richiesto(chiave)
+    if permesso and not _ha_permesso(permesso):
+        riga = utente_corrente()
+        db.registra(
+            "accesso negato",
+            utente=_utente(),
+            esito="rifiutato",
+            dettaglio=f"archivio {chiave}",
+            indirizzo_ip=_ip(),
+        )
+        del riga
+        abort(403)
+
+
+@app.route("/archivio")
+@richiede_permesso(permessi.LEGGE_DATI)
+def archivio():
+    prefisso = request.args.get("p", "")
+    _consenti_prefisso(prefisso)
+    try:
+        contenuto = esplora.elenca(prefisso, request.args.get("segue", ""))
+    except Exception as e:
+        logger.error("elenco dell'archivio non riuscito", exc_info=e)
+        return render_template("archivio.html", errore=str(e), contenuto=None), 502
+
+    # i rami riservati spariscono dall'elenco per chi non puo' vederli
+    contenuto["cartelle"] = [
+        c
+        for c in contenuto["cartelle"]
+        if not esplora.permesso_richiesto(c["prefisso"])
+        or _ha_permesso(esplora.permesso_richiesto(c["prefisso"]))
+    ]
+    return render_template("archivio.html", contenuto=contenuto, errore=None)
+
+
+@app.route("/archivio/scarica")
+@richiede_permesso(permessi.LEGGE_DATI)
+def scarica_da_archivio():
+    chiave = request.args.get("chiave", "")
+    if not chiave or chiave.endswith("/"):
+        abort(400)
+    _consenti_prefisso(chiave)
+
+    voce = esplora.dettagli(chiave)
+    if not voce:
+        abort(404)
+
+    db.registra(
+        "scarico da archivio",
+        utente=_utente(),
+        dettaglio=f"{chiave} ({voce['dimensione'] / 1024 / 1024:.1f} MB)",
+        indirizzo_ip=_ip(),
+    )
+    risposta = Response(
+        stream_with_context(esplora.flusso(chiave)),
+        mimetype="application/octet-stream",
+    )
+    risposta.headers["Content-Length"] = str(voce["dimensione"])
+    risposta.headers["Content-Disposition"] = (
+        f'attachment; filename="{chiave.rsplit("/", 1)[-1]}"'
+    )
+    return risposta
 
 
 @app.route("/registro/esporta.csv")

@@ -52,6 +52,13 @@ footer {
   line-height: 1.7;
 }
 footer strong { color: var(--inchiostro); }
+footer .crediti {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bordo);
+  font-size: 11.5px;
+}
 
 h1 { font-size: 20px; margin: 0 0 6px; }
 h2 { font-size: 16px; margin: 28px 0 8px; }
@@ -141,6 +148,16 @@ table.elenco a { color: var(--accento); }
   text-decoration: none;
 }
 .bottone:hover { background: #17497a; }
+
+.briciole {
+  margin: 4px 0 14px;
+  font-size: 13.5px;
+  color: var(--tenue);
+}
+.briciole a { color: var(--accento); text-decoration: none; }
+.briciole a:hover { text-decoration: underline; }
+.briciole span { margin: 0 4px; color: var(--bordo); }
+td.destra, th.destra { text-align: right; }
 
 .filtro { margin: 12px 0 16px; font-size: 13.5px; color: var(--tenue); }
 .filtro select { font: inherit; padding: 4px 6px; border: 1px solid var(--bordo); border-radius: 4px; }

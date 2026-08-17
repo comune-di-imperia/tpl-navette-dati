@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block titolo %}Archivio{% endblock %}
+{% block contenuto %}
+<h1>Archivio su S3</h1>
+<p class="sottotitolo">
+  bucket <code>dati.sperimentazione</code> &middot; Huawei OceanStor presso BBBell
+  &middot; consultazione in sola lettura
+</p>
+
+{% if errore %}
+  <div class="avviso errore">
+    Archivio non raggiungibile: {{ errore }}
+  </div>
+{% else %}
+
+<nav class="briciole">
+  {% for b in contenuto.briciole %}
+    {%- if not loop.last -%}
+      <a href="{{ url_for('archivio', p=b.prefisso) }}">{{ b.nome }}</a> <span>/</span>
+    {%- else -%}
+      <strong>{{ b.nome }}</strong>
+    {%- endif -%}
+  {% endfor %}
+</nav>
+
+<table class="elenco">
+  <thead>
+    <tr><th>Nome</th><th class="destra">Dimensione</th><th>Modificato</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for c in contenuto.cartelle %}
+    <tr>
+      <td colspan="3">
+        <a href="{{ url_for('archivio', p=c.prefisso) }}">&#128193; {{ c.nome }}/</a>
+      </td>
+      <td></td>
+    </tr>
+  {% endfor %}
+  {% for o in contenuto.oggetti %}
+    <tr>
+      <td>{{ o.nome }}</td>
+      <td class="destra nowrap">
+        {%- if o.dimensione >= 1048576 -%}
+          {{ '%.1f'|format(o.dimensione / 1048576) }} MB
+        {%- elif o.dimensione >= 1024 -%}
+          {{ '%.0f'|format(o.dimensione / 1024) }} kB
+        {%- else -%}
+          {{ o.dimensione }} B
+        {%- endif -%}
+      </td>
+      <td class="nowrap">{{ o.modificato.strftime('%d/%m/%Y %H:%M') }}</td>
+      <td><a href="{{ url_for('scarica_da_archivio', chiave=o.chiave) }}">scarica</a></td>
+    </tr>
+  {% endfor %}
+  {% if not contenuto.cartelle and not contenuto.oggetti %}
+    <tr><td colspan="4" class="vuoto">cartella vuota</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+
+{% if contenuto.troncato %}
+<p>
+  <a class="bottone" href="{{ url_for('archivio', p=contenuto.prefisso, segue=contenuto.segue) }}">
+    Mostra altri elementi
+  </a>
+</p>
+{% endif %}
+
+<p class="minuto">
+  Gli archivi originali delle navette stanno in <code>originali/</code>, i file
+  elaborati in <code>elaborati/</code>, lo storico del registro attività in
+  <code>registro/</code>. Da qui si può solo consultare e scaricare: caricamento
+  e cancellazione non sono esposti.
+</p>
+{% endif %}
+{% endblock %}

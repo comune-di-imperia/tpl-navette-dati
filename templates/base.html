@@ -18,6 +18,9 @@
     {% if ha_permesso('report.scarica') %}
     <a href="{{ url_for('report') }}" {% if request.endpoint == 'report' %}class="attivo"{% endif %}>Report</a>
     {% endif %}
+    {% if ha_permesso('dati.leggi') %}
+    <a href="{{ url_for('archivio') }}" {% if request.endpoint == 'archivio' %}class="attivo"{% endif %}>Archivio</a>
+    {% endif %}
     {% if ha_permesso('registro.leggi') %}
     <a href="{{ url_for('registro') }}" {% if request.endpoint == 'registro' %}class="attivo"{% endif %}>Registro</a>
     {% endif %}
@@ -48,6 +51,9 @@
   <strong>Comune di Imperia</strong><br>
   Viale Giacomo Matteotti, 157 &middot; 18100 Imperia (IM)<br>
   Centralino: 0183 701 1 &middot; Partita IVA: 00089700082
+  <span class="crediti">
+    Software Architect: Ing. Carlo Capacci &middot; Software Coder: Claude.ai
+  </span>
 </footer>
 {% block coda %}{% endblock %}
 </body>
