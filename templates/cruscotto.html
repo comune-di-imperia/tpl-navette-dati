@@ -27,7 +27,7 @@
       <td>{{ e.navetta or '-' }}</td>
       <td class="nowrap">{{ e.data_dati or '-' }}</td>
       <td><a href="{{ url_for('dettaglio', elab_id=e.id) }}">{{ e.nome_file }}</a></td>
-      <td>{{ e.utente or '-' }}</td>
+      <td>{{ e.operatore or e.utente or '-' }}</td>
       <td><span class="stato {{ e.stato }}">{{ e.stato.replace('_', ' ') }}</span></td>
     </tr>
   {% else %}

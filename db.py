@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS utenti (
 CREATE TABLE IF NOT EXISTS elaborazioni (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     utente_id     INTEGER REFERENCES utenti(id),
+    operatore     TEXT NOT NULL DEFAULT '',   -- nome utente, o indirizzo IP
     nome_file     TEXT NOT NULL,
     dimensione    INTEGER NOT NULL DEFAULT 0,
     navetta       TEXT NOT NULL DEFAULT '',
@@ -94,6 +95,13 @@ def connessione():
 def inizializza() -> None:
     with connessione() as con:
         con.executescript(SCHEMA)
+        # colonna introdotta dopo la messa in esercizio: i primi caricamenti
+        # sono gia' nel database e non vanno persi
+        colonne = {r["name"] for r in con.execute("PRAGMA table_info(elaborazioni)")}
+        if "operatore" not in colonne:
+            con.execute(
+                "ALTER TABLE elaborazioni ADD COLUMN operatore TEXT NOT NULL DEFAULT ''"
+            )
 
 
 # ----------------------------------------------------------------- utenti
@@ -201,12 +209,14 @@ def leggi_registro(limite: int = 200, utente: str = "") -> List[Dict[str, Any]]:
         return [dict(r) for r in con.execute(sql, par)]
 
 
-def apri_elaborazione(utente_id: int, nome_file: str, dimensione: int) -> int:
+def apri_elaborazione(
+    utente_id: Optional[int], nome_file: str, dimensione: int, operatore: str = ""
+) -> int:
     with connessione() as con:
         cur = con.execute(
-            "INSERT INTO elaborazioni (utente_id, nome_file, dimensione, "
-            "iniziata_il) VALUES (?,?,?,?)",
-            (utente_id, nome_file, dimensione, _adesso()),
+            "INSERT INTO elaborazioni (utente_id, operatore, nome_file, dimensione, "
+            "iniziata_il) VALUES (?,?,?,?,?)",
+            (utente_id, operatore, nome_file, dimensione, _adesso()),
         )
         return cur.lastrowid
 

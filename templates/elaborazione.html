@@ -10,7 +10,7 @@
 </p>
 
 <table class="elenco stretta">
-  <tr><th>Caricato da</th><td>{{ e.utente or '-' }}</td></tr>
+  <tr><th>Caricato da</th><td>{{ e.operatore or e.utente or '-' }}</td></tr>
   <tr><th>Iniziata</th><td>{{ e.iniziata_il[:19].replace('T', ' ') }} UTC</td></tr>
   <tr><th>Conclusa</th><td>{{ (e.conclusa_il or '')[:19].replace('T', ' ') or '-' }}</td></tr>
   <tr><th>Dimensione</th><td>{{ '%.1f'|format(e.dimensione / 1024 / 1024) }} MB</td></tr>

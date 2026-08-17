@@ -21,7 +21,7 @@
       <td>{{ v.navetta or '-' }}</td>
       <td class="nowrap">{{ v.data_dati or '-' }}</td>
       <td><a href="{{ url_for('dettaglio', elab_id=v.id) }}">{{ v.nome_file }}</a></td>
-      <td>{{ v.utente or '-' }}</td>
+      <td>{{ v.operatore or v.utente or '-' }}</td>
       <td class="nowrap">{{ (v.conclusa_il or '')[:16].replace('T', ' ') or '-' }}</td>
       <td>
         {% if v.disponibile %}

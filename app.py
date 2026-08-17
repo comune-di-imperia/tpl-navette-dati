@@ -241,7 +241,9 @@ def carica():
         else ""
     )
 
-    elab_id = db.apri_elaborazione(session.get("utente_id"), nome, dimensione)
+    elab_id = db.apri_elaborazione(
+        session.get("utente_id"), nome, dimensione, operatore=_utente()
+    )
     db.registra(
         "caricamento",
         utente=_utente(),
