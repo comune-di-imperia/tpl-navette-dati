@@ -14,8 +14,9 @@
   </a>
   {% if session.utente or accesso_libero() %}
   <nav>
+    {# la freccia indica il ritorno: quando ci sei gia', non torna da nessuna parte #}
     <a class="principale {% if request.endpoint == 'cruscotto' %}attivo{% endif %}"
-       href="{{ url_for('cruscotto') }}">&#9204; Cruscotto</a>
+       href="{{ url_for('cruscotto') }}">{% if request.endpoint != 'cruscotto' %}&#9204; {% endif %}Cruscotto</a>
     {% if ha_permesso('report.scarica') %}
     <a href="{{ url_for('report') }}" {% if request.endpoint == 'report' %}class="attivo"{% endif %}>Report</a>
     {% endif %}
