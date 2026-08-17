@@ -3,10 +3,16 @@
 {% block contenuto %}
 
 <div id="zona" class="zona">
-  <p class="grande">Trascina qui l'archivio giornaliero</p>
+  <p class="grande">Trascina qui i file della giornata</p>
   <p class="piccolo">
-    i <code>.tar.gz</code> prodotti dall'estrattore Navya (uno per computer di
-    bordo, trascinali insieme) oppure il <code>.zip</code> che li raccoglie
+    <strong>Ogni navetta produce due file <code>.tar.gz</code> al giorno</strong>,
+    uno per computer di bordo: vanno caricati <strong>insieme</strong>, altrimenti
+    si ottengono due elaborazioni a meta'.
+  </p>
+  <p class="piccolo">
+    Puoi trascinare in una volta anche i file di piu' navette o di piu' giornate:
+    vengono raggruppati da soli in base al nome. In alternativa, il
+    <code>.zip</code> che raccoglie i due file di una giornata.
   </p>
   <p class="piccolo">oppure <label class="sfoglia">scegli dal computer
     <input type="file" id="scelta" accept=".zip,.tar.gz,.tgz" multiple hidden></label></p>
