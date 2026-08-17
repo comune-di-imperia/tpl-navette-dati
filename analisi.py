@@ -16,6 +16,7 @@ tre parametri calcolati (velocita', accelerazione, distanza percorsa).
 from __future__ import annotations
 
 import gzip
+import io
 import math
 import os
 import re
@@ -157,22 +158,30 @@ def metadati_da_nome(nome: str) -> Dict[str, str]:
     }
 
 
-RE_PC = re.compile(r"_(pc\d)\.tar\.gz$", re.IGNORECASE)
+RE_PC = re.compile(r"_(pc\d)\.(?:tar\.gz|tgz|zip)$", re.IGNORECASE)
+
+ESTENSIONI_TAR = (".tar.gz", ".tgz")
+ESTENSIONI_ARCHIVIO = ESTENSIONI_TAR + (".zip",)
 
 
 def e_tar(nome: str) -> bool:
-    return nome.lower().endswith((".tar.gz", ".tgz"))
+    return nome.lower().endswith(ESTENSIONI_TAR)
+
+
+def e_archivio(nome: str) -> bool:
+    return nome.lower().endswith(ESTENSIONI_ARCHIVIO)
 
 
 def componenti(sorgente: Path) -> List[Path]:
-    """I tar.gz da elaborare, sia dentro uno ZIP sia consegnati sciolti.
+    """Gli archivi da elaborare, uno per computer di bordo.
 
-    L'estrattore Navya produce un ``tar.gz`` per computer di bordo; lo ZIP che
-    li raccoglie e' un contenitore aggiunto a valle, non sempre presente.
+    Il confezionamento non e' uniforme: a seconda della navetta l'estrattore
+    consegna ``_pcN.tar.gz`` oppure ``_pcN.zip``, e talvolta un unico ZIP che
+    li raccoglie entrambi. Qui si accettano tutte le forme.
     """
     if sorgente.is_dir():
-        return sorted(p for p in sorgente.iterdir() if e_tar(p.name))
-    return [sorgente] if e_tar(sorgente.name) else []
+        return sorted(p for p in sorgente.iterdir() if e_archivio(p.name))
+    return [sorgente] if e_archivio(sorgente.name) else []
 
 
 def _pc_di(nome: str, ordinale: int) -> str:
@@ -181,39 +190,69 @@ def _pc_di(nome: str, ordinale: int) -> str:
     return trovato.group(1).lower() if trovato else f"pc{ordinale}"
 
 
+def _estrai_in(percorso: Path, dove: Path, profondita: int = 2) -> None:
+    """Estrae un archivio, risolvendo un eventuale archivio annidato.
+
+    Capita che dentro lo ``_pcN.zip`` ci sia a sua volta un ``tar.gz``: senza
+    scendere di un livello il file dati non si troverebbe.
+    """
+    dove.mkdir(parents=True, exist_ok=True)
+    if e_tar(percorso.name):
+        with tarfile.open(percorso, "r:gz") as t:
+            t.extractall(dove)
+    else:
+        with zipfile.ZipFile(percorso) as z:
+            z.extractall(dove)
+
+    if profondita <= 0 or next(iter(dove.rglob("*.h5")), None):
+        return
+    for interno in sorted(dove.rglob("*")):
+        if interno.is_file() and e_archivio(interno.name):
+            _estrai_in(
+                interno, interno.parent / f"{interno.name}.estratto", profondita - 1
+            )
+
+
 def estrai_archivio(sorgente: Path, destinazione: Path) -> Dict[str, Path]:
     """Estrae l'archivio giornaliero. Ritorna {computer: percorso .h5}.
 
     ``sorgente`` puo' essere lo ZIP che raccoglie i due computer, un singolo
-    ``tar.gz``, oppure una cartella che ne contiene piu' d'uno.
+    archivio di un computer, oppure una cartella che ne contiene piu' d'uno.
 
-    I tar.gz corrotti non interrompono l'elaborazione: vengono saltati e
+    Gli archivi corrotti non interrompono l'elaborazione: vengono saltati e
     segnalati dal chiamante confrontando le chiavi attese con quelle ottenute.
     """
     destinazione.mkdir(parents=True, exist_ok=True)
 
-    if sorgente.is_file() and not e_tar(sorgente.name):
+    if sorgente.is_dir() or e_tar(sorgente.name):
+        interni = componenti(sorgente)
+    else:
+        # uno ZIP puo' raccogliere i due computer oppure essere gia' quello di
+        # un computer solo: si guarda cosa c'e' dentro prima di decidere
+        aperto = destinazione / "_contenitore"
         try:
             with zipfile.ZipFile(sorgente) as z:
                 danneggiato = z.testzip()
                 if danneggiato:
                     raise ArchivioNonValido(f"voce ZIP corrotta: {danneggiato}")
-                z.extractall(destinazione)
+                z.extractall(aperto)
         except zipfile.BadZipFile as e:
             raise ArchivioNonValido(f"file ZIP illeggibile: {e}") from e
-        interni = sorted(destinazione.rglob("*.tar.gz"))
-    else:
-        interni = componenti(sorgente)
+
+        interni = [
+            p for p in sorted(aperto.rglob("*")) if p.is_file() and e_archivio(p.name)
+        ]
+        if not interni:
+            h5 = next(iter(aperto.rglob("*.h5")), None)
+            return {"pc1": h5} if h5 else {}
 
     trovati: Dict[str, Path] = {}
-    for ordinale, tgz in enumerate(interni, start=1):
-        pc = _pc_di(tgz.name, ordinale)
+    for ordinale, archivio in enumerate(interni, start=1):
+        pc = _pc_di(archivio.name, ordinale)
         fuori = destinazione / pc
-        fuori.mkdir(parents=True, exist_ok=True)
         try:
-            with tarfile.open(tgz, "r:gz") as t:
-                t.extractall(fuori)
-        except (tarfile.TarError, EOFError, OSError):
+            _estrai_in(archivio, fuori)
+        except (tarfile.TarError, zipfile.BadZipFile, EOFError, OSError):
             # archivio troncato: capitato davvero sul pc1 di BF05 del 03/08
             continue
         h5 = next(iter(fuori.rglob("*.h5")), None)
@@ -699,42 +738,71 @@ def verifica_integrita(zip_path: Path) -> Dict[str, str]:
     compresso. Su archivi da 90 MB costa meno di un secondo.
     """
 
-    def _scorri(apri, pc: str, esiti: Dict[str, str]) -> None:
+    def _scorri_gzip(apri) -> str:
         try:
             with apri() as f, gzip.GzipFile(fileobj=f) as g:
                 while g.read(4 << 20):
                     pass
-            esiti[pc] = ""
+            return ""
         except (OSError, EOFError, zlib.error) as e:
-            esiti[pc] = f"archivio troncato o illeggibile ({type(e).__name__})"
+            return f"archivio troncato o illeggibile ({type(e).__name__})"
+
+    def _controlla_zip(apri) -> str:
+        """CRC di tutte le voci, piu' i tar.gz eventualmente contenuti."""
+        try:
+            with zipfile.ZipFile(apri()) as z:
+                rotta = z.testzip()
+                if rotta:
+                    return f"voce interna corrotta: {rotta}"
+                for nome in z.namelist():
+                    if e_tar(nome):
+                        motivo = _scorri_gzip(lambda n=nome: z.open(n))
+                        if motivo:
+                            return motivo
+                return ""
+        except (zipfile.BadZipFile, OSError, EOFError) as e:
+            return f"archivio illeggibile ({type(e).__name__})"
+
+    def _controlla(percorso: Path) -> str:
+        if e_tar(percorso.name):
+            return _scorri_gzip(lambda: percorso.open("rb"))
+        return _controlla_zip(lambda: percorso.open("rb"))
 
     esiti: Dict[str, str] = {}
 
-    # tar.gz sciolti, uno o piu': non c'e' nessuno ZIP da aprire
+    # archivi consegnati sciolti, uno per computer di bordo
     if zip_path.is_dir() or e_tar(zip_path.name):
         interni = componenti(zip_path)
         if not interni:
             raise ArchivioNonValido(
-                "nessun file dei computer di bordo (.tar.gz) fra quelli caricati"
+                "fra i file caricati non ce n'e' nessuno dei computer di bordo "
+                "(.tar.gz o .zip)"
             )
-        for ordinale, tgz in enumerate(interni, start=1):
-            _scorri(lambda p=tgz: p.open("rb"), _pc_di(tgz.name, ordinale), esiti)
+        for ordinale, p in enumerate(interni, start=1):
+            esiti[_pc_di(p.name, ordinale)] = _controlla(p)
         return esiti
 
+    # ZIP singolo: puo' raccogliere i due computer o essere gia' quello di uno
     try:
         with zipfile.ZipFile(zip_path) as z:
             rotta = z.testzip()
             if rotta:
                 raise ArchivioNonValido(f"voce ZIP corrotta: {rotta}")
-
-            interni = sorted(n for n in z.namelist() if e_tar(n))
+            interni = sorted(n for n in z.namelist() if e_archivio(n))
             if not interni:
+                # nessun archivio annidato: i dati stanno direttamente qui
+                if any(n.lower().endswith(".h5") for n in z.namelist()):
+                    return {"pc1": ""}
                 raise ArchivioNonValido(
-                    "l'archivio non contiene i file dei computer di bordo "
-                    "(_pc1.tar.gz / _pc2.tar.gz)"
+                    "l'archivio non contiene i file dei computer di bordo"
                 )
             for ordinale, nome in enumerate(interni, start=1):
-                _scorri(lambda n=nome: z.open(n), _pc_di(nome, ordinale), esiti)
+                pc = _pc_di(nome, ordinale)
+                esiti[pc] = (
+                    _scorri_gzip(lambda n=nome: z.open(n))
+                    if e_tar(nome)
+                    else _controlla_zip(lambda n=nome: io.BytesIO(z.read(n)))
+                )
             return esiti
     except zipfile.BadZipFile as e:
         raise ArchivioNonValido(f"file ZIP illeggibile: {e}") from e

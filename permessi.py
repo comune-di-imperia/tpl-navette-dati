@@ -16,7 +16,7 @@ from typing import Dict, List, Tuple
 
 AMMINISTRATORE = "amministratore"
 TECNICO = "tecnico"
-AMMINISTRATIVO = "amministrativo"
+CONSULTAZIONE = "consultazione"
 
 # (codice, etichetta, descrizione) - l'ordine e' quello dei menu a tendina
 RUOLI: Tuple[Tuple[str, str, str], ...] = (
@@ -31,9 +31,9 @@ RUOLI: Tuple[Tuple[str, str, str], ...] = (
         "Carica gli archivi, consulta elaborazioni e report",
     ),
     (
-        AMMINISTRATIVO,
-        "Amministrativo",
-        "Consulta elaborazioni e report, senza caricare dati",
+        CONSULTAZIONE,
+        "Consultazione",
+        "Consulta elaborazioni, archivio e report senza poter agire",
     ),
 )
 
@@ -45,14 +45,25 @@ GESTIONE_UTENTI = "utenti.gestione"
 CARICA_DATI = "dati.carica"
 LEGGE_DATI = "dati.leggi"
 SCARICA_REPORT = "report.scarica"
+# Distinto da SCARICA_REPORT: il report e' una sintesi, i file dell'archivio
+# sono il dato grezzo di sperimentazione. Consultazione legge le sintesi ma non
+# porta via gli originali.
+SCARICA_ARCHIVIO = "archivio.scarica"
 LEGGE_REGISTRO = "registro.leggi"
 
 PERMESSI: Dict[str, frozenset] = {
     AMMINISTRATORE: frozenset(
-        {GESTIONE_UTENTI, CARICA_DATI, LEGGE_DATI, SCARICA_REPORT, LEGGE_REGISTRO}
+        {
+            GESTIONE_UTENTI,
+            CARICA_DATI,
+            LEGGE_DATI,
+            SCARICA_REPORT,
+            SCARICA_ARCHIVIO,
+            LEGGE_REGISTRO,
+        }
     ),
-    TECNICO: frozenset({CARICA_DATI, LEGGE_DATI, SCARICA_REPORT}),
-    AMMINISTRATIVO: frozenset({LEGGE_DATI, SCARICA_REPORT}),
+    TECNICO: frozenset({CARICA_DATI, LEGGE_DATI, SCARICA_REPORT, SCARICA_ARCHIVIO}),
+    CONSULTAZIONE: frozenset({LEGGE_DATI, SCARICA_REPORT}),
 }
 
 

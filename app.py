@@ -44,7 +44,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from . import analisi, db, esplora, permessi, pipeline, posta
+from . import analisi, db, esplora, manuale, permessi, pipeline, posta
 
 logger = logging.getLogger("tpl.app")
 
@@ -189,9 +189,18 @@ def limite_consentito(chiave: str, massimo: int, finestra_s: int) -> bool:
 
 
 def _ip() -> str:
-    """IP del client: dietro il reverse proxy Apache vale l'ultimo hop noto."""
+    """Indirizzo del client, dietro il reverse proxy Apache.
+
+    Conta l'ULTIMO valore di ``X-Forwarded-For``, non il primo: Apache accoda in
+    fondo l'indirizzo che ha visto davvero, mentre tutto quello che precede lo
+    ha scritto il client e puo' essere inventato di sana pianta. Prendendo il
+    primo si lascerebbe falsificare il registro e aggirare il blocco per
+    tentativi ripetuti semplicemente inviando un'intestazione a piacere.
+    """
     inoltrato = request.headers.get("X-Forwarded-For", "")
-    return (inoltrato.split(",")[0].strip() if inoltrato else request.remote_addr) or ""
+    if inoltrato:
+        return inoltrato.split(",")[-1].strip()
+    return request.remote_addr or ""
 
 
 def _gettone() -> str:
@@ -539,6 +548,24 @@ def scarica_tutti_i_report():
     )
 
 
+# ----------------------------------------------------------------- manuale
+@app.route("/manuale/<lingua>.pdf")
+def scarica_manuale(lingua: str):
+    """Manuale d'uso. Pubblico: serve anche a chi non riesce ad accedere."""
+    if lingua not in manuale.LINGUE:
+        abort(404)
+    percorso = pipeline.OUTPUT / f"manuale-{lingua}.pdf"
+    # si compone una volta sola e si tiene: cambia solo quando cambia il codice
+    if not percorso.exists():
+        manuale.genera(lingua, percorso)
+    return send_file(
+        percorso,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"manuale-navette-{lingua}.pdf",
+    )
+
+
 # ------------------------------------------------------------ archivio su S3
 def _consenti_prefisso(chiave: str) -> None:
     """Alcuni rami dell'archivio non sono per tutti.
@@ -582,7 +609,7 @@ def archivio():
 
 
 @app.route("/archivio/scarica")
-@richiede_permesso(permessi.LEGGE_DATI)
+@richiede_permesso(permessi.SCARICA_ARCHIVIO)
 def scarica_da_archivio():
     chiave = request.args.get("chiave", "")
     if not chiave or chiave.endswith("/"):
@@ -953,7 +980,10 @@ def io_stesso():
 def _lavora(elab_id: int) -> None:
     percorso = _percorsi.pop(elab_id, None)
     riga = db.leggi_elaborazione(elab_id)
-    utente = (riga or {}).get("utente", "")
+    utente = (riga or {}).get("operatore") or (riga or {}).get("utente", "")
+    # con i tar.gz sciolti il percorso e' la cartella temporanea, che ha un nome
+    # tecnico: nel registro deve comparire quello che ha caricato l'operatore
+    etichetta = (riga or {}).get("nome_file") or (percorso.name if percorso else "?")
     if not percorso or not percorso.exists():
         db.chiudi_elaborazione(elab_id, "fallita", "file caricato non piu' disponibile")
         return
@@ -967,7 +997,7 @@ def _lavora(elab_id: int) -> None:
             "elaborazione",
             utente=utente,
             esito="fallita",
-            dettaglio=f"{percorso.name}: {e}",
+            dettaglio=f"{etichetta}: {e}",
         )
         return
 
@@ -990,7 +1020,7 @@ def _lavora(elab_id: int) -> None:
     db.registra(
         "elaborazione",
         utente=utente,
-        dettaglio=f"{percorso.name} -> {esito.get('chiave_s3', '')}",
+        dettaglio=f"{etichetta} -> {esito.get('chiave_s3', '')}",
     )
     shutil.rmtree(
         percorso if percorso.is_dir() else percorso.parent, ignore_errors=True

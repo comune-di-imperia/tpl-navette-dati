@@ -216,6 +216,13 @@ def _copia_utenti(con) -> None:
 
 
 def _semina_ruoli(con) -> None:
+    # "amministrativo" e' diventato "consultazione": si rinomina la riga
+    # esistente invece di aggiungerne una nuova, cosi' gli utenti che vi
+    # puntano restano collegati senza toccare ruolo_id
+    con.execute(
+        "UPDATE ruoli SET codice='consultazione' WHERE codice='amministrativo' "
+        "AND NOT EXISTS (SELECT 1 FROM ruoli WHERE codice='consultazione')"
+    )
     for codice, nome, descrizione in RUOLI:
         con.execute(
             "INSERT INTO ruoli (codice, nome, descrizione) VALUES (?,?,?) "
