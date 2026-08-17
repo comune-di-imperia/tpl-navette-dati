@@ -41,6 +41,14 @@ chown -R root:root "$DESTINAZIONE"
 chown -R tpl:tpl "$DATI"
 chmod 750 "$DATI"
 
+# Un env gia' compilato puo' essere depositato in /tmp/tpl-env: viene installato
+# con i permessi giusti e subito rimosso dalla posizione temporanea.
+if [ -f /tmp/tpl-env ] && [ ! -f "$CONFIG/env" ]; then
+    install -o root -g tpl -m 0640 /tmp/tpl-env "$CONFIG/env"
+    shred -u /tmp/tpl-env 2>/dev/null || rm -f /tmp/tpl-env
+    echo "Configurazione installata da /tmp/tpl-env."
+fi
+
 if [ ! -f "$CONFIG/env" ]; then
     install -o root -g tpl -m 0640 "$QUI/env.esempio" "$CONFIG/env"
     echo
@@ -56,6 +64,18 @@ systemctl restart tpl-navette
 
 a2enmod proxy proxy_http headers ssl rewrite >/dev/null
 install -m 0644 "$QUI/tpl-navette.apache.conf" /etc/apache2/sites-available/tpl-navette.conf
+
+# Il VPS serviva gia' una pagina segnaposto sullo stesso ServerName: due vhost
+# con lo stesso nome fanno vincere il primo in ordine alfabetico, quindi il
+# segnaposto va disattivato. a2dissite non cancella nulla: si torna indietro
+# con `a2ensite tpl.comune.imperia.it`.
+for vecchio in tpl.comune.imperia.it tpl.comune.imperia.it-ssl; do
+    if [ -e "/etc/apache2/sites-enabled/$vecchio.conf" ]; then
+        a2dissite "$vecchio" >/dev/null
+        echo "disattivato il vhost segnaposto $vecchio"
+    fi
+done
+
 a2ensite tpl-navette >/dev/null
 apache2ctl configtest && systemctl reload apache2
 
