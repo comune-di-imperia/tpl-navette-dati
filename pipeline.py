@@ -42,6 +42,12 @@ def _s3():
             signature_version="s3v4",
             s3={"addressing_style": "path"},
             retries={"max_attempts": 3, "mode": "standard"},
+            # Da botocore 1.36 ogni upload porta un checksum CRC32 che
+            # l'OceanStor rifiuta ("Checksum algorithm provided is
+            # unsupported... valid types: [SHA256, CRC32C]"): senza questo il
+            # multipart fallisce su ogni file oltre gli 8 MB.
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
         ),
     )
 

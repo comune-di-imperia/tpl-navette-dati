@@ -190,9 +190,12 @@ def carica():
             "<navetta>_<data>_<VIN>_<data>_<ora>.zip come prodotto dall'estrattore"
         )
 
-    pipeline.UPLOAD.mkdir(parents=True, exist_ok=True)
-    marca = datetime.now().strftime("%Y%m%d%H%M%S")
-    destinazione = pipeline.UPLOAD / f"{marca}_{nome}"
+    # Il file va tenuto col SUO nome: navetta, VIN e giornata si leggono da li'.
+    # Per questo l'unicita' si ottiene con una sottocartella, non con un
+    # prefisso al nome (che romperebbe il riconoscimento dei metadati).
+    cartella = pipeline.UPLOAD / datetime.now().strftime("%Y%m%d%H%M%S%f")
+    cartella.mkdir(parents=True, exist_ok=True)
+    destinazione = cartella / nome
     caricato.save(destinazione)
     dimensione = destinazione.stat().st_size
 
@@ -404,6 +407,7 @@ def _lavora(elab_id: int) -> None:
         dettaglio=f"{percorso.name} -> {esito.get('chiave_s3', '')}",
     )
     percorso.unlink(missing_ok=True)
+    percorso.parent.rmdir()
 
 
 def _servi_coda() -> None:
