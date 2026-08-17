@@ -534,7 +534,9 @@ def richiedi_password():
             agente=request.headers.get("User-Agent", ""),
         )
         try:
-            posta.invia_link_password(riga["email"], token, "reset", riga["nome"])
+            posta.invia_link_password(
+                riga["email"], token, "reset", riga["nome"], riga["utente"]
+            )
         except Exception as e:
             logger.error("invio del link di recupero fallito", exc_info=e)
 
@@ -656,7 +658,9 @@ def _invia_invito(utente_id: int, nome_utente: str) -> None:
     riga = db.leggi_utente_per_id(utente_id)
     token = db.crea_token(utente_id, "primo_accesso", ip=_ip())
     try:
-        posta.invia_link_password(riga["email"], token, "primo_accesso", riga["nome"])
+        posta.invia_link_password(
+            riga["email"], token, "primo_accesso", riga["nome"], riga["utente"]
+        )
         flash(
             f"Utenza {nome_utente} creata: invito inviato a {riga['email']}.", "esito"
         )
@@ -714,7 +718,11 @@ def modifica_utente(utente_id: int):
         elif azione == "reimposta":
             token = db.crea_token(utente_id, "reset", ip=_ip())
             posta.invia_link_password(
-                bersaglio["email"], token, "reset", bersaglio["nome"]
+                bersaglio["email"],
+                token,
+                "reset",
+                bersaglio["nome"],
+                bersaglio["utente"],
             )
             _annota("invio link di recupero", bersaglio)
             flash(f"Link inviato a {bersaglio['email']}.", "esito")

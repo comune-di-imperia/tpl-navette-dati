@@ -63,13 +63,24 @@ def invia(
         s.send_message(msg)
 
 
-def invia_link_password(email: str, token: str, tipo: str, nome: str = "") -> None:
+def invia_link_password(
+    email: str, token: str, tipo: str, nome: str = "", utente: str = ""
+) -> None:
     """Recapita il link di primo accesso o di recupero password.
 
+    Il nome utente va scritto sempre: chi riceve il messaggio ha in mano solo il
+    proprio indirizzo e, non trovandolo indicato, prova ad accedere con quello.
     Il token compare solo nel corpo, mai nell'oggetto, e non va scritto nei log.
     """
     saluto = f"Buongiorno {nome}," if nome else "Buongiorno,"
     link = f"{base_url()}/password/reimposta/{token}"
+    credenziali = (
+        f"Il suo nome utente e': {utente}\n"
+        f"(per accedere puo' usare indifferentemente il nome utente o\n"
+        f"l'indirizzo {email})\n\n"
+        if utente
+        else ""
+    )
 
     if tipo == "primo_accesso":
         oggetto = "Attivazione dell'utenza - TPL navette Imperia"
@@ -77,6 +88,7 @@ def invia_link_password(email: str, token: str, tipo: str, nome: str = "") -> No
             f"{saluto}\n\n"
             "e' stata creata un'utenza a suo nome per l'applicazione di gestione\n"
             "dati delle navette a guida autonoma del Comune di Imperia.\n\n"
+            f"{credenziali}"
             "Per scegliere la password e attivare l'accesso:\n\n"
             f"    {link}\n\n"
             "Il collegamento e' valido 48 ore e puo' essere usato una sola volta.\n\n"
@@ -91,6 +103,7 @@ def invia_link_password(email: str, token: str, tipo: str, nome: str = "") -> No
             "per la sua utenza. Per scegliere una nuova password:\n\n"
             f"    {link}\n\n"
             "Il collegamento e' valido 30 minuti e puo' essere usato una sola volta.\n\n"
+            f"{credenziali}"
             "Se non ha richiesto lei il recupero, ignori questo messaggio: la\n"
             "password attuale resta valida. Se il caso si ripete, lo segnali\n"
             "all'amministratore del sistema.\n"

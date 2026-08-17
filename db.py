@@ -368,6 +368,22 @@ def leggi_utente_per_id(utente_id: int) -> Optional[Dict[str, Any]]:
         return dict(r) if r else None
 
 
+def leggi_per_identificativo(identificativo: str) -> Optional[Dict[str, Any]]:
+    """Cerca per nome utente OPPURE per indirizzo email.
+
+    Chi riceve l'invito ha in mano il proprio indirizzo, ed e' quello che
+    digita: rifiutarlo produce un "credenziali non valide" incomprensibile,
+    perche' la password e' giusta davvero. Entrambi i campi sono unici, quindi
+    non c'e' ambiguita'.
+    """
+    ident = identificativo.strip()
+    with connessione() as con:
+        r = con.execute(
+            _SELEZIONE + "WHERE u.utente = ? OR u.email = ?", (ident, ident.lower())
+        ).fetchone()
+        return dict(r) if r else None
+
+
 def leggi_utente_per_email(email: str) -> Optional[Dict[str, Any]]:
     with connessione() as con:
         r = con.execute(
@@ -395,7 +411,7 @@ def verifica_credenziali(utente: str, password: str) -> Dict[str, Any]:
     Il motivo serve al registro, non all'utente: a video il messaggio deve
     restare identico in ogni caso di fallimento.
     """
-    riga = leggi_utente(utente)
+    riga = leggi_per_identificativo(utente)
     if not riga:
         # calcolo a vuoto: il tempo di risposta non deve distinguere
         # "utenza inesistente" da "password sbagliata"

@@ -76,7 +76,7 @@ def main(argv=None) -> int:
             from . import posta
 
             token = db.crea_token(uid, "primo_accesso")
-            posta.invia_link_password(a.email, token, "primo_accesso", a.nome)
+            posta.invia_link_password(a.email, token, "primo_accesso", a.nome, a.utente)
             print(f"invito di attivazione inviato a {a.email}")
 
     elif a.comando == "utente-password":

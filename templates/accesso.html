@@ -6,7 +6,7 @@
   {% if errore %}<div class="avviso errore">{{ errore }}</div>{% endif %}
   <form method="post">
     <input type="hidden" name="csrf" value="{{ gettone() }}">
-    <label>Utente
+    <label>Utente o indirizzo email
       <input type="text" name="utente" autocomplete="username" required autofocus>
     </label>
     <label>Password
