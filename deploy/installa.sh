@@ -1,0 +1,65 @@
+#!/bin/bash
+# Installa l'applicazione TPL navette sul VPS. Idempotente: si puo' rilanciare
+# per aggiornare il codice senza toccare dati, utenti e configurazione.
+#
+#   sudo bash installa.sh
+#
+# Non tocca /etc/tpl-navette/env: al primo giro copia l'esempio e si ferma,
+# perche' senza chiavi S3 il servizio non ha senso di partire.
+set -euo pipefail
+
+DESTINAZIONE=/opt/tpl-navette
+DATI=/var/lib/tpl-navette
+CONFIG=/etc/tpl-navette
+QUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SORGENTE="$(dirname "$QUI")"
+
+apt-get update -qq
+apt-get install -y --no-install-recommends \
+    python3-venv python3-dev build-essential \
+    libhdf5-dev pkg-config \
+    libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
+    apache2 >/dev/null
+
+id -u tpl >/dev/null 2>&1 || useradd --system --home "$DATI" --shell /usr/sbin/nologin tpl
+
+mkdir -p "$DESTINAZIONE/scripts/tpl_navette" "$DATI/uploads" "$DATI/output" "$CONFIG"
+touch "$DESTINAZIONE/scripts/__init__.py" "$DESTINAZIONE/scripts/tpl_navette/__init__.py"
+
+rsync -a --delete \
+    --exclude '__pycache__' --exclude 'deploy' \
+    "$SORGENTE/" "$DESTINAZIONE/scripts/tpl_navette/"
+
+if [ ! -f "$DESTINAZIONE/.venv/bin/python" ]; then
+    python3 -m venv "$DESTINAZIONE/.venv"
+fi
+"$DESTINAZIONE/.venv/bin/pip" install --quiet --upgrade pip
+"$DESTINAZIONE/.venv/bin/pip" install --quiet \
+    flask gunicorn pandas tables boto3 weasyprint
+
+chown -R root:root "$DESTINAZIONE"
+chown -R tpl:tpl "$DATI"
+chmod 750 "$DATI"
+
+if [ ! -f "$CONFIG/env" ]; then
+    install -o root -g tpl -m 0640 "$QUI/env.esempio" "$CONFIG/env"
+    echo
+    echo "Creato $CONFIG/env dall'esempio."
+    echo "Compilare TPL_SECRET_KEY, S3_ACCESS_KEY e S3_SECRET_KEY, poi rilanciare."
+    exit 0
+fi
+
+install -m 0644 "$QUI/tpl-navette.service" /etc/systemd/system/tpl-navette.service
+systemctl daemon-reload
+systemctl enable --now tpl-navette
+systemctl restart tpl-navette
+
+a2enmod proxy proxy_http headers ssl rewrite >/dev/null
+install -m 0644 "$QUI/tpl-navette.apache.conf" /etc/apache2/sites-available/tpl-navette.conf
+a2ensite tpl-navette >/dev/null
+apache2ctl configtest && systemctl reload apache2
+
+echo
+echo "Servizio attivo. Senza operatori registrati l'accesso e' libero e protetto"
+echo "solo dal filtro sugli IP. Per attivare le credenziali:"
+echo "  cd $DESTINAZIONE && sudo -u tpl .venv/bin/python -m scripts.tpl_navette.cli utente-crea --utente <nome>"

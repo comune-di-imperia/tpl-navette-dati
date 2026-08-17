@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titolo %}Dati navette{% endblock %} &middot; TPL Imperia</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stile.css') }}">
+</head>
+<body>
+<header>
+  <div class="marchio">
+    <strong>Navette a guida autonoma</strong>
+    <span>Comune di Imperia &middot; gestione dati sperimentazione</span>
+  </div>
+  {% if session.utente or accesso_libero() %}
+  <nav>
+    <a href="{{ url_for('cruscotto') }}" {% if request.endpoint == 'cruscotto' %}class="attivo"{% endif %}>Caricamento</a>
+    <a href="{{ url_for('report') }}" {% if request.endpoint == 'report' %}class="attivo"{% endif %}>Report</a>
+    <a href="{{ url_for('registro') }}" {% if request.endpoint == 'registro' %}class="attivo"{% endif %}>Registro</a>
+    {% if session.utente %}
+      <span class="chi">{{ session.utente }}</span>
+      <a class="esci" href="{{ url_for('uscita') }}">Esci</a>
+    {% else %}
+      <span class="chi">accesso consentito per indirizzo IP</span>
+    {% endif %}
+  </nav>
+  {% endif %}
+</header>
+
+<main>
+  {% with messaggi = get_flashed_messages(with_categories=true) %}
+    {% for categoria, testo in messaggi %}
+      <div class="avviso {{ categoria }}">{{ testo }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block contenuto %}{% endblock %}
+</main>
+
+<footer>Direzione Lavori TPL &middot; Studio Capacci</footer>
+{% block coda %}{% endblock %}
+</body>
+</html>

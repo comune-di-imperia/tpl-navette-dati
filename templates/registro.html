@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titolo %}Registro{% endblock %}
+{% block contenuto %}
+<h1>Registro attivita'</h1>
+
+<form class="filtro" method="get">
+  <label>Operatore
+    <select name="utente" onchange="this.form.submit()">
+      <option value="">tutti</option>
+      {% for u in utenti %}
+      <option value="{{ u.utente }}" {% if u.utente == filtro %}selected{% endif %}>{{ u.utente }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit">Filtra</button></noscript>
+</form>
+
+<table class="elenco">
+  <thead>
+    <tr><th>Quando (UTC)</th><th>Operatore</th><th>Azione</th><th>Esito</th>
+        <th>Dettaglio</th><th>Indirizzo</th></tr>
+  </thead>
+  <tbody>
+  {% for v in voci %}
+    <tr>
+      <td class="nowrap">{{ v.quando[:19].replace('T', ' ') }}</td>
+      <td>{{ v.utente or '-' }}</td>
+      <td>{{ v.azione }}</td>
+      <td><span class="stato {{ 'completata' if v.esito == 'ok' else 'fallita' }}">{{ v.esito }}</span></td>
+      <td class="dettaglio">{{ v.dettaglio }}</td>
+      <td class="nowrap">{{ v.indirizzo_ip }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="vuoto">registro vuoto</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block titolo %}Report{% endblock %}
+{% block contenuto %}
+<h1>Report delle elaborazioni</h1>
+<p class="sottotitolo">
+  un PDF per ogni archivio caricato, con i parametri calcolati e le segnalazioni
+</p>
+
+{% if voci %}
+<p><a class="bottone" href="{{ url_for('scarica_tutti_i_report') }}">Scarica tutti i report (ZIP)</a></p>
+{% endif %}
+
+<table class="elenco">
+  <thead>
+    <tr><th>Navetta</th><th>Giornata</th><th>Archivio</th><th>Operatore</th>
+        <th>Elaborato il</th><th>Report</th></tr>
+  </thead>
+  <tbody>
+  {% for v in voci %}
+    <tr>
+      <td>{{ v.navetta or '-' }}</td>
+      <td class="nowrap">{{ v.data_dati or '-' }}</td>
+      <td><a href="{{ url_for('dettaglio', elab_id=v.id) }}">{{ v.nome_file }}</a></td>
+      <td>{{ v.utente or '-' }}</td>
+      <td class="nowrap">{{ (v.conclusa_il or '')[:16].replace('T', ' ') or '-' }}</td>
+      <td>
+        {% if v.disponibile %}
+          <a href="{{ url_for('scarica_report', elab_id=v.id) }}">scarica PDF</a>
+        {% else %}
+          <span class="vuoto">non piu' disponibile</span>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="vuoto">nessun report ancora prodotto</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

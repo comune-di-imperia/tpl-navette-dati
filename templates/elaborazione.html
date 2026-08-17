@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block titolo %}Elaborazione {{ e.id }}{% endblock %}
+{% block contenuto %}
+<h1>{{ e.nome_file }}</h1>
+<p class="sottotitolo">
+  navetta <strong>{{ e.navetta or '-' }}</strong> &middot;
+  giornata <strong>{{ e.data_dati or '-' }}</strong> &middot;
+  VIN {{ e.vin or '-' }} &middot;
+  <span class="stato {{ e.stato }}">{{ e.stato.replace('_', ' ') }}</span>
+</p>
+
+<table class="elenco stretta">
+  <tr><th>Caricato da</th><td>{{ e.utente or '-' }}</td></tr>
+  <tr><th>Iniziata</th><td>{{ e.iniziata_il[:19].replace('T', ' ') }} UTC</td></tr>
+  <tr><th>Conclusa</th><td>{{ (e.conclusa_il or '')[:19].replace('T', ' ') or '-' }}</td></tr>
+  <tr><th>Dimensione</th><td>{{ '%.1f'|format(e.dimensione / 1024 / 1024) }} MB</td></tr>
+  <tr><th>Archiviato su S3</th><td><code>{{ e.chiave_s3 or '-' }}</code></td></tr>
+</table>
+
+{% if e.messaggio %}
+<div class="avviso errore">{{ e.messaggio }}</div>
+{% endif %}
+
+{% for pc, dati in (e.riepilogo or {}).items() %}
+  <h2>Computer di bordo {{ pc }}</h2>
+  <table class="elenco stretta">
+    {% for chiave, valore in dati.items() %}
+    <tr><th>{{ chiave.replace('_', ' ') }}</th><td>{{ valore }}</td></tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p class="vuoto">nessun riepilogo disponibile</p>
+{% endfor %}
+
+<p><a href="{{ url_for('cruscotto') }}">&larr; torna al caricamento</a></p>
+{% endblock %}

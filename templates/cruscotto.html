@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block titolo %}Caricamento{% endblock %}
+{% block contenuto %}
+
+<div id="zona" class="zona">
+  <p class="grande">Trascina qui l'archivio giornaliero</p>
+  <p class="piccolo">
+    file <code>.zip</code> prodotto dall'estrattore Navya,
+    nel formato <code>&lt;navetta&gt;_&lt;data&gt;_&lt;VIN&gt;_&lt;data&gt;_&lt;ora&gt;.zip</code>
+  </p>
+  <p class="piccolo">oppure <label class="sfoglia">scegli dal computer
+    <input type="file" id="scelta" accept=".zip" multiple hidden></label></p>
+</div>
+
+<ul id="incorso" class="incorso"></ul>
+
+<h2>Ultime elaborazioni</h2>
+<table class="elenco">
+  <thead>
+    <tr><th>Quando</th><th>Navetta</th><th>Giornata</th><th>Archivio</th>
+        <th>Operatore</th><th>Esito</th></tr>
+  </thead>
+  <tbody>
+  {% for e in elaborazioni %}
+    <tr>
+      <td class="nowrap">{{ e.iniziata_il[:16].replace('T', ' ') }}</td>
+      <td>{{ e.navetta or '-' }}</td>
+      <td class="nowrap">{{ e.data_dati or '-' }}</td>
+      <td><a href="{{ url_for('dettaglio', elab_id=e.id) }}">{{ e.nome_file }}</a></td>
+      <td>{{ e.utente or '-' }}</td>
+      <td><span class="stato {{ e.stato }}">{{ e.stato.replace('_', ' ') }}</span></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="vuoto">nessun archivio ancora caricato</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+{% block coda %}
+<script>
+const GETTONE = "{{ gettone() }}";
+const zona = document.getElementById('zona');
+const scelta = document.getElementById('scelta');
+const incorso = document.getElementById('incorso');
+
+['dragenter', 'dragover'].forEach(e => zona.addEventListener(e, ev => {
+  ev.preventDefault(); zona.classList.add('sopra');
+}));
+['dragleave', 'drop'].forEach(e => zona.addEventListener(e, ev => {
+  ev.preventDefault(); zona.classList.remove('sopra');
+}));
+zona.addEventListener('drop', ev => accoda(ev.dataTransfer.files));
+scelta.addEventListener('change', () => accoda(scelta.files));
+
+function accoda(files) {
+  for (const f of files) invia(f);
+}
+
+function riga(nome) {
+  const li = document.createElement('li');
+  li.innerHTML = `<span class="nome"></span>
+    <span class="barra"><i style="width:0%"></i></span>
+    <span class="esito">in caricamento…</span>`;
+  li.querySelector('.nome').textContent = nome;
+  incorso.prepend(li);
+  return li;
+}
+
+function invia(file) {
+  const li = riga(file.name);
+  const barra = li.querySelector('.barra i');
+  const esito = li.querySelector('.esito');
+
+  const dati = new FormData();
+  dati.append('archivio', file);
+  dati.append('csrf', GETTONE);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', "{{ url_for('carica') }}");
+  xhr.setRequestHeader('X-CSRF-Token', GETTONE);
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) barra.style.width = (e.loaded / e.total * 100) + '%';
+  };
+  xhr.onload = () => {
+    let r = {};
+    try { r = JSON.parse(xhr.responseText); } catch (e) { /* risposta non JSON */ }
+    if (xhr.status !== 202) {
+      li.classList.add('fallita');
+      esito.textContent = r.errore || ('errore ' + xhr.status);
+      return;
+    }
+    barra.style.width = '100%';
+    if (r.avviso) {
+      li.classList.add('parziale');
+      esito.textContent = r.avviso;
+    } else {
+      esito.textContent = 'in elaborazione…';
+    }
+    sorveglia(r.id, li, esito);
+  };
+  xhr.onerror = () => {
+    li.classList.add('fallita');
+    esito.textContent = 'connessione interrotta';
+  };
+  xhr.send(dati);
+}
+
+// l'analisi di un archivio dura decine di secondi: si interroga lo stato
+function sorveglia(id, li, esito) {
+  const t = setInterval(async () => {
+    let r;
+    try {
+      r = await (await fetch('/stato/' + id)).json();
+    } catch (e) { return; }   // rete ballerina: si riprova al giro dopo
+    if (r.stato === 'in_corso') {
+      esito.textContent = r.in_coda > 0
+        ? `in coda (${r.in_coda} davanti)…` : 'in elaborazione…';
+      return;
+    }
+    clearInterval(t);
+    li.classList.add(r.stato === 'completata' ? 'completata' : 'fallita');
+    if (r.stato === 'completata') {
+      esito.innerHTML = `completata &middot; <a href="/elaborazione/${id}">apri il riepilogo</a>`;
+    } else {
+      // testo di eccezione: puo' contenere il nome file, mai inserirlo come HTML
+      esito.textContent = 'non riuscita: ' + (r.messaggio || 'errore');
+    }
+  }, 3000);
+}
+</script>
+{% endblock %}
