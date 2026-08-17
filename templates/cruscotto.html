@@ -5,11 +5,11 @@
 <div id="zona" class="zona">
   <p class="grande">Trascina qui l'archivio giornaliero</p>
   <p class="piccolo">
-    file <code>.zip</code> prodotto dall'estrattore Navya,
-    nel formato <code>&lt;navetta&gt;_&lt;data&gt;_&lt;VIN&gt;_&lt;data&gt;_&lt;ora&gt;.zip</code>
+    i <code>.tar.gz</code> prodotti dall'estrattore Navya (uno per computer di
+    bordo, trascinali insieme) oppure il <code>.zip</code> che li raccoglie
   </p>
   <p class="piccolo">oppure <label class="sfoglia">scegli dal computer
-    <input type="file" id="scelta" accept=".zip" multiple hidden></label></p>
+    <input type="file" id="scelta" accept=".zip,.tar.gz,.tgz" multiple hidden></label></p>
 </div>
 
 <ul id="incorso" class="incorso"></ul>
@@ -22,7 +22,7 @@
   </thead>
   <tbody>
   {% for e in elaborazioni %}
-    <tr>
+    <tr {% if e.stato == 'in_corso' %}data-in-corso="{{ e.id }}"{% endif %}>
       <td class="nowrap">{{ e.iniziata_il[:16].replace('T', ' ') }}</td>
       <td>{{ e.navetta or '-' }}</td>
       <td class="nowrap">{{ e.data_dati or '-' }}</td>
@@ -53,8 +53,19 @@ const incorso = document.getElementById('incorso');
 zona.addEventListener('drop', ev => accoda(ev.dataTransfer.files));
 scelta.addEventListener('change', () => accoda(scelta.files));
 
+// I due computer di bordo di una stessa giornata vanno inviati INSIEME:
+// separati darebbero due elaborazioni a meta', ciascuna con un report parziale.
+const RE_BASE = /^[A-Za-z0-9]+_\d{8}_[A-Za-z0-9]+_\d{8}_\d{2}h\d{2}m\d{2}s/;
+
 function accoda(files) {
-  for (const f of files) invia(f);
+  const gruppi = new Map();
+  for (const f of files) {
+    const trovato = f.name.match(RE_BASE);
+    const chiave = trovato ? trovato[0] : f.name;
+    if (!gruppi.has(chiave)) gruppi.set(chiave, []);
+    gruppi.get(chiave).push(f);
+  }
+  for (const [chiave, insieme] of gruppi) invia(insieme, chiave);
 }
 
 function riga(nome) {
@@ -67,15 +78,26 @@ function riga(nome) {
   return li;
 }
 
-function invia(file) {
-  const li = riga(file.name);
+// Trasferimenti in corso: finche' ce n'e' uno, lasciare la pagina lo interrompe.
+let inVolo = 0;
+window.addEventListener('beforeunload', ev => {
+  if (inVolo > 0) {
+    ev.preventDefault();
+    ev.returnValue = '';   // richiesto da alcuni browser per mostrare l'avviso
+  }
+});
+
+function invia(insieme, chiave) {
+  const nomi = insieme.map(f => f.name);
+  const li = riga(insieme.length === 1 ? nomi[0] : `${chiave} (${nomi.length} file)`);
   const barra = li.querySelector('.barra i');
   const esito = li.querySelector('.esito');
 
   const dati = new FormData();
-  dati.append('archivio', file);
+  for (const f of insieme) dati.append('archivio', f);
   dati.append('csrf', GETTONE);
 
+  inVolo += 1;
   const xhr = new XMLHttpRequest();
   xhr.open('POST', "{{ url_for('carica') }}");
   xhr.setRequestHeader('X-CSRF-Token', GETTONE);
@@ -83,6 +105,7 @@ function invia(file) {
     if (e.lengthComputable) barra.style.width = (e.loaded / e.total * 100) + '%';
   };
   xhr.onload = () => {
+    inVolo -= 1;   // il file e' arrivato: da qui in poi lavora il server
     let r = {};
     try { r = JSON.parse(xhr.responseText); } catch (e) { /* risposta non JSON */ }
     if (xhr.status !== 202) {
@@ -100,11 +123,20 @@ function invia(file) {
     sorveglia(r.id, li, esito);
   };
   xhr.onerror = () => {
+    inVolo -= 1;
     li.classList.add('fallita');
     esito.textContent = 'connessione interrotta';
   };
   xhr.send(dati);
 }
+
+// L'elaborazione prosegue sul server anche se si cambia pagina: al rientro si
+// riprende a seguire quelle ancora in corso, invece di lasciarle mute.
+document.querySelectorAll('tr[data-in-corso]').forEach(tr => {
+  const id = tr.dataset.inCorso;
+  const cella = tr.querySelector('.stato');
+  sorveglia(id, tr, cella);
+});
 
 // l'analisi di un archivio dura decine di secondi: si interroga lo stato
 function sorveglia(id, li, esito) {

@@ -18,6 +18,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import threading
 import time
 import zipfile
@@ -48,10 +49,28 @@ from . import analisi, db, esplora, permessi, pipeline, posta
 logger = logging.getLogger("tpl.app")
 
 DIMENSIONE_MASSIMA = int(os.environ.get("TPL_MAX_MB", "512")) * 1024 * 1024
-ESTENSIONI = {".zip"}
+
+# Lo ZIP raccoglie i due computer di bordo, ma l'estrattore Navya consegna un
+# tar.gz per computer: si accettano entrambe le forme.
+ESTENSIONI = (".zip", ".tar.gz", ".tgz")
 RE_NOME_ATTESO = re.compile(
     r"^[A-Za-z0-9]+_\d{8}_[A-Za-z0-9]+_\d{8}_\d{2}h\d{2}m\d{2}s"
 )
+
+
+def _estensione_ammessa(nome: str) -> bool:
+    return nome.lower().endswith(ESTENSIONI)
+
+
+def _base(nome: str) -> str:
+    """Prefisso che identifica navetta e giornata, senza il ``_pcN`` finale.
+
+    Serve a capire se piu' file caricati insieme sono i computer della stessa
+    giornata o roba scollegata.
+    """
+    trovato = RE_NOME_ATTESO.match(nome)
+    return trovato.group(0) if trovato else nome
+
 
 app = Flask(__name__)
 app.config.update(
@@ -312,38 +331,56 @@ def cruscotto():
 @richiede_permesso(permessi.CARICA_DATI)
 def carica():
     _verifica_gettone()
-    caricato = request.files.get("archivio")
-    if not caricato or not caricato.filename:
+    caricati = [f for f in request.files.getlist("archivio") if f and f.filename]
+    if not caricati:
         return jsonify(errore="nessun file ricevuto"), 400
 
-    nome = secure_filename(caricato.filename)
+    nomi = [secure_filename(f.filename) for f in caricati]
+    etichetta = nomi[0] if len(nomi) == 1 else f"{len(nomi)} file di {_base(nomi[0])}"
 
     def _rifiuta(motivo: str):
         db.registra(
             "caricamento",
             utente=_utente(),
             esito="rifiutato",
-            dettaglio=f"{nome}: {motivo}",
+            dettaglio=f"{etichetta}: {motivo}",
             indirizzo_ip=_ip(),
         )
         return jsonify(errore=motivo), 400
 
-    if Path(nome).suffix.lower() not in ESTENSIONI:
-        return _rifiuta("sono ammessi solo archivi .zip")
-    if not RE_NOME_ATTESO.match(nome):
+    for nome in nomi:
+        if not _estensione_ammessa(nome):
+            return _rifiuta(
+                f"{nome}: sono ammessi archivi .zip oppure i .tar.gz "
+                "prodotti dall'estrattore"
+            )
+        if not RE_NOME_ATTESO.match(nome):
+            return _rifiuta(
+                f"{nome}: nome non conforme, atteso "
+                "<navetta>_<data>_<VIN>_<data>_<ora> come prodotto dall'estrattore"
+            )
+    # piu' file insieme hanno senso solo se sono i computer della STESSA giornata
+    if len({_base(n) for n in nomi}) > 1:
         return _rifiuta(
-            "nome non conforme: atteso "
-            "<navetta>_<data>_<VIN>_<data>_<ora>.zip come prodotto dall'estrattore"
+            "i file caricati insieme appartengono a giornate o navette diverse: "
+            "caricali separatamente"
         )
 
-    # Il file va tenuto col SUO nome: navetta, VIN e giornata si leggono da li'.
-    # Per questo l'unicita' si ottiene con una sottocartella, non con un
+    # I file vanno tenuti col LORO nome: navetta, VIN e giornata si leggono da
+    # li'. Per questo l'unicita' si ottiene con una sottocartella, non con un
     # prefisso al nome (che romperebbe il riconoscimento dei metadati).
     cartella = pipeline.UPLOAD / datetime.now().strftime("%Y%m%d%H%M%S%f")
     cartella.mkdir(parents=True, exist_ok=True)
-    destinazione = cartella / nome
-    caricato.save(destinazione)
-    dimensione = destinazione.stat().st_size
+    for f, nome in zip(caricati, nomi):
+        f.save(cartella / nome)
+
+    # un solo ZIP resta un file; i tar.gz sciolti si elaborano come insieme
+    destinazione = (
+        cartella / nomi[0]
+        if len(nomi) == 1 and not analisi.e_tar(nomi[0])
+        else cartella
+    )
+    dimensione = sum((cartella / n).stat().st_size for n in nomi)
 
     # Controllo d'integrita' prima di accodare: costa meno di un secondo e
     # risparmia all'operatore un'elaborazione che fallirebbe comunque. Un
@@ -351,7 +388,7 @@ def carica():
     try:
         integrita = analisi.verifica_integrita(destinazione)
     except analisi.ArchivioNonValido as e:
-        destinazione.unlink(missing_ok=True)
+        shutil.rmtree(cartella, ignore_errors=True)
         db.registra(
             "caricamento",
             utente=_utente(),
@@ -363,7 +400,7 @@ def carica():
 
     rovinati = {pc: motivo for pc, motivo in integrita.items() if motivo}
     if len(rovinati) == len(integrita):
-        destinazione.unlink(missing_ok=True)
+        shutil.rmtree(cartella, ignore_errors=True)
         db.registra(
             "caricamento",
             utente=_utente(),
@@ -388,17 +425,20 @@ def carica():
     )
 
     elab_id = db.apri_elaborazione(
-        session.get("utente_id"), nome, dimensione, operatore=_utente()
+        session.get("utente_id"), etichetta, dimensione, operatore=_utente()
     )
     db.registra(
         "caricamento",
         utente=_utente(),
-        dettaglio=f"{nome} ({dimensione / 1024 / 1024:.1f} MB) -> elaborazione {elab_id}",
+        dettaglio=f"{etichetta} ({dimensione / 1024 / 1024:.1f} MB) -> elaborazione {elab_id}",
         indirizzo_ip=_ip(),
     )
     _coda.put(elab_id)
     _percorsi[elab_id] = destinazione
-    return jsonify(id=elab_id, nome=nome, dimensione=dimensione, avviso=avviso), 202
+    return (
+        jsonify(id=elab_id, nome=etichetta, dimensione=dimensione, avviso=avviso),
+        202,
+    )
 
 
 @app.route("/stato/<int:elab_id>")
@@ -952,8 +992,9 @@ def _lavora(elab_id: int) -> None:
         utente=utente,
         dettaglio=f"{percorso.name} -> {esito.get('chiave_s3', '')}",
     )
-    percorso.unlink(missing_ok=True)
-    percorso.parent.rmdir()
+    shutil.rmtree(
+        percorso if percorso.is_dir() else percorso.parent, ignore_errors=True
+    )
 
 
 def _servi_coda() -> None:

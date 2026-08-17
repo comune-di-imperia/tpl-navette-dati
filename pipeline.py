@@ -10,6 +10,7 @@ di sperimentazione da conservare, l'elaborato e' derivato e ricostruibile.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -70,14 +71,38 @@ def _chiave(prefisso: str, esito: analisi.Esito, nome: str) -> str:
     return f"{prefisso}/{navetta}/{giorno}/{nome}"
 
 
+def _originali(sorgente: Path) -> List[Path]:
+    """I file da conservare tal quali: lo ZIP, oppure i tar.gz consegnati sciolti."""
+    return (
+        sorted(p for p in sorgente.iterdir() if p.is_file())
+        if sorgente.is_dir()
+        else [sorgente]
+    )
+
+
+def _radice(sorgente: Path) -> str:
+    """Nome su cui costruire quelli dei file prodotti."""
+    if sorgente.is_dir():
+        primo = _originali(sorgente)[0].name
+        # <navetta>_<data>_<VIN>_<data>_<ora>_pcN.tar.gz -> senza _pcN ne' estensione
+        return re.sub(r"(_pc\d)?\.(tar\.gz|tgz|zip)$", "", primo, flags=re.IGNORECASE)
+    return sorgente.stem
+
+
 def elabora(percorso_caricato: Path, invia: bool = True) -> Dict[str, Any]:
     """Analizza l'archivio, ne archivia originale ed elaborato, produce il report.
+
+    ``percorso_caricato`` puo' essere lo ZIP che raccoglie i due computer di
+    bordo oppure la cartella in cui sono stati depositati i ``tar.gz`` sciolti.
 
     Un archivio di sola telemetria (senza il computer di localizzazione) non
     permette di calcolare i parametri cinematici: viene comunque analizzato e
     archiviato, e l'assenza risulta fra le anomalie.
     """
     OUTPUT.mkdir(parents=True, exist_ok=True)
+    originali = _originali(percorso_caricato)
+    radice = _radice(percorso_caricato)
+
     with tempfile.TemporaryDirectory(prefix="tpl-") as tmp:
         esito = analisi.analizza_archivio(percorso_caricato, Path(tmp))
 
@@ -85,14 +110,17 @@ def elabora(percorso_caricato: Path, invia: bool = True) -> Dict[str, Any]:
         chiave_elaborato = ""
         try:
             elaborato = analisi.scrivi_elaborato(
-                esito, OUTPUT / (percorso_caricato.stem + "-elaborato.h5")
+                esito, OUTPUT / (radice + "-elaborato.h5")
             )
         except analisi.ArchivioNonValido as e:
             esito.anomalie.append(analisi.Anomalia("avviso", "elaborato", str(e)))
 
-        chiave_originale = carica_su_s3(
-            percorso_caricato,
-            _chiave(PREFISSO_ORIGINALI, esito, percorso_caricato.name),
+        chiavi = [
+            carica_su_s3(p, _chiave(PREFISSO_ORIGINALI, esito, p.name))
+            for p in originali
+        ]
+        chiave_originale = (
+            chiavi[0].rsplit("/", 1)[0] + "/" if len(chiavi) > 1 else chiavi[0]
         )
         if elaborato:
             chiave_elaborato = carica_su_s3(
@@ -100,7 +128,7 @@ def elabora(percorso_caricato: Path, invia: bool = True) -> Dict[str, Any]:
             )
 
         contesto: Dict[str, Any] = {
-            "originale": percorso_caricato.name,
+            "originale": ", ".join(p.name for p in originali),
             "elaborato": elaborato.name if elaborato else "",
             "chiave_s3": chiave_originale,
             "chiave_s3_elaborato": chiave_elaborato,
@@ -108,7 +136,7 @@ def elabora(percorso_caricato: Path, invia: bool = True) -> Dict[str, Any]:
             **esito.come_dizionario(),
         }
 
-        pdf = genera_pdf(contesto, OUTPUT / (percorso_caricato.stem + "-report.pdf"))
+        pdf = genera_pdf(contesto, OUTPUT / (radice + "-report.pdf"))
         contesto["pdf"] = pdf.name
 
         destinatari = [
