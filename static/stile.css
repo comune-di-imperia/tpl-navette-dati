@@ -30,8 +30,23 @@ header {
   border-bottom: 1px solid var(--bordo);
 }
 
+.marchio { text-decoration: none; color: inherit; }
+.marchio:hover strong { color: var(--accento); }
 .marchio strong { display: block; font-size: 16px; }
 .marchio span { color: var(--tenue); font-size: 12.5px; }
+
+/* il ritorno al cruscotto e' l'azione piu' frequente: va riconoscibile
+   a colpo d'occhio, non confuso fra le altre voci */
+nav a.principale {
+  padding: 5px 12px;
+  border: 1px solid var(--accento);
+  border-radius: 5px;
+}
+nav a.principale.attivo {
+  color: #fff;
+  background: var(--accento);
+  border-color: var(--accento);
+}
 
 nav { display: flex; align-items: center; gap: 18px; font-size: 14px; }
 nav a { color: var(--accento); text-decoration: none; }

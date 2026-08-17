@@ -8,13 +8,14 @@
 </head>
 <body>
 <header>
-  <div class="marchio">
+  <a class="marchio" href="{{ url_for('cruscotto') }}">
     <strong>Navette a guida autonoma</strong>
     <span>Comune di Imperia &middot; gestione dati sperimentazione</span>
-  </div>
+  </a>
   {% if session.utente or accesso_libero() %}
   <nav>
-    <a href="{{ url_for('cruscotto') }}" {% if request.endpoint == 'cruscotto' %}class="attivo"{% endif %}>Caricamento</a>
+    <a class="principale {% if request.endpoint == 'cruscotto' %}attivo{% endif %}"
+       href="{{ url_for('cruscotto') }}">&#9204; Cruscotto</a>
     {% if ha_permesso('report.scarica') %}
     <a href="{{ url_for('report') }}" {% if request.endpoint == 'report' %}class="attivo"{% endif %}>Report</a>
     {% endif %}
