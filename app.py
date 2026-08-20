@@ -139,6 +139,25 @@ def _ha_permesso(permesso: str) -> bool:
     return bool(riga and permessi.puo(riga["ruolo"], permesso))
 
 
+def _non_autenticato():
+    """Risposta a chi non ha (piu') una sessione valida.
+
+    Alla pagina si manda un rimando all'accesso; a una richiesta asincrona
+    serve invece un 401 con la spiegazione: durante un caricamento da 100 MB
+    il rimando arriva mentre il corpo e' ancora in viaggio, il proxy trova la
+    connessione chiusa e l'operatore si vede un incomprensibile "errore 502".
+    """
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return (
+            jsonify(
+                errore="sessione scaduta: rientra e riprova il caricamento",
+                scaduta=True,
+            ),
+            401,
+        )
+    return redirect(url_for("accesso", prossima=request.path))
+
+
 def richiede_permesso(permesso: str):
     """Protegge la rotta. Va messo su TUTTE, comprese quelle che tornano JSON:
     nascondere una voce di menu non impedisce di richiamare l'indirizzo."""
@@ -150,7 +169,7 @@ def richiede_permesso(permesso: str):
                 return f(*a, **kw)
             riga = utente_corrente()
             if not riga:
-                return redirect(url_for("accesso", prossima=request.path))
+                return _non_autenticato()
             if not permessi.puo(riga["ruolo"], permesso):
                 db.registra(
                     "accesso negato",

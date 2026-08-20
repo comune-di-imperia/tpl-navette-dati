@@ -93,11 +93,30 @@ window.addEventListener('beforeunload', ev => {
   }
 });
 
-function invia(insieme, chiave, forzato) {
+function scaduta(li, esito) {
+  li.classList.add('fallita');
+  esito.textContent = 'sessione scaduta — ';
+  const rientra = document.createElement('a');
+  rientra.href = "{{ url_for('accesso') }}";
+  rientra.textContent = 'rientra e riprova';
+  esito.appendChild(rientra);
+}
+
+async function invia(insieme, chiave, forzato) {
   const nomi = insieme.map(f => f.name);
   const li = riga(insieme.length === 1 ? nomi[0] : `${chiave} (${nomi.length} file)`);
   const barra = li.querySelector('.barra i');
   const esito = li.querySelector('.esito');
+
+  // Si controlla PRIMA di spedire: se la sessione e' scaduta, mandare 100 MB
+  // per poi vederseli rifiutare e' tempo buttato, e il rimando all'accesso
+  // arriverebbe a corpo ancora in viaggio, producendo un errore di proxy.
+  try {
+    if ((await fetch('/api/io', {headers: {'X-Requested-With': 'XMLHttpRequest'}})).status === 401) {
+      scaduta(li, esito);
+      return;
+    }
+  } catch (e) { /* rete assente: si prova comunque, l'errore emerge dopo */ }
 
   const dati = new FormData();
   for (const f of insieme) dati.append('archivio', f);
@@ -108,6 +127,7 @@ function invia(insieme, chiave, forzato) {
   const xhr = new XMLHttpRequest();
   xhr.open('POST', "{{ url_for('carica') }}");
   xhr.setRequestHeader('X-CSRF-Token', GETTONE);
+  xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
   xhr.upload.onprogress = e => {
     if (e.lengthComputable) barra.style.width = (e.loaded / e.total * 100) + '%';
   };
@@ -115,6 +135,7 @@ function invia(insieme, chiave, forzato) {
     inVolo -= 1;   // il file e' arrivato: da qui in poi lavora il server
     let r = {};
     try { r = JSON.parse(xhr.responseText); } catch (e) { /* risposta non JSON */ }
+    if (xhr.status === 401 || r.scaduta) { scaduta(li, esito); return; }
     if (xhr.status === 409 && !forzato) {
       // stesso contenuto gia' elaborato: si offre di rifarlo, non si impone
       li.classList.add('parziale');
@@ -128,7 +149,11 @@ function invia(insieme, chiave, forzato) {
     }
     if (xhr.status !== 202) {
       li.classList.add('fallita');
-      esito.textContent = r.errore || ('errore ' + xhr.status);
+      // 502/504: il proxy non ha ottenuto risposta, quasi sempre perche' la
+      // connessione si e' chiusa a meta' invio
+      esito.textContent = r.errore || (xhr.status >= 502
+        ? 'trasferimento interrotto: riprova, e se si ripete rientra nel sito'
+        : 'errore ' + xhr.status);
       return;
     }
     barra.style.width = '100%';
