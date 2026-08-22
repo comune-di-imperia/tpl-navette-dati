@@ -1,0 +1,91 @@
+# Descrittore per il riuso del software fra pubbliche amministrazioni,
+# previsto dalle Linee guida AGID in attuazione dell'art. 69 del CAD.
+# Riferimento: https://yml.publiccode.tools
+publiccodeYmlVersion: "0.4"
+
+name: Gestione dati navette a guida autonoma
+applicationSuite: TPL Imperia
+url: "https://github.com/comune-di-imperia/tpl-navette-dati"
+landingURL: "https://tpl.comune.imperia.it"
+
+softwareVersion: "1.0"
+releaseDate: "2026-08-22"
+
+platforms:
+  - web
+
+categories:
+  - data-analytics
+  - data-collection
+  - fleet-management
+
+developmentStatus: stable
+
+softwareType: standalone/web
+
+description:
+  it:
+    localisedName: Gestione dati navette a guida autonoma
+    shortDescription: >-
+      Raccolta, analisi e conservazione dei dati di funzionamento delle navette
+      a guida autonoma in sperimentazione sul territorio comunale.
+    longDescription: >-
+      L'applicazione riceve gli archivi giornalieri prodotti dall'estrattore di
+      bordo delle navette a guida autonoma, ne verifica l'integrita', ne ricava
+      le grandezze di interesse e li conserva in modo permanente su spazio di
+      archiviazione compatibile S3.
+
+
+      Dai dati grezzi, che descrivono posizione, assetto e telemetria del
+      veicolo, vengono calcolate tre grandezze che l'estrattore non fornisce:
+      accelerazione, regime di rotazione e beccheggio. Viene inoltre ricostruita
+      la ripartizione fra guida autonoma e guida manuale, pesata sul tempo
+      effettivo di marcia e sulla percorrenza anziche' sul numero di rilevazioni.
+
+
+      Per ogni giornata elaborata viene prodotto un report in PDF. L'accesso e'
+      regolato da tre ruoli distinti e ogni operazione viene annotata in un
+      registro delle attivita', archiviato mensilmente e conservato senza
+      scadenza.
+    features:
+      - Caricamento degli archivi giornalieri con verifica dell'integrita'
+      - Calcolo di accelerazione, regime di rotazione e beccheggio
+      - Ripartizione fra guida autonoma e guida manuale
+      - Report in PDF per ogni giornata elaborata
+      - Archiviazione permanente su spazio compatibile S3
+      - Gestione delle utenze con tre ruoli e recupero password
+      - Registro delle attivita' con esportazione e archiviazione mensile
+    documentation: "https://tpl.comune.imperia.it/manuale/it.pdf"
+  en:
+    localisedName: Autonomous shuttle data management
+    shortDescription: >-
+      Collection, analysis and preservation of operating data from the
+      autonomous shuttles being trialled within the municipal area.
+    documentation: "https://tpl.comune.imperia.it/manuale/en.pdf"
+
+legal:
+  license: EUPL-1.2
+  mainCopyrightOwner: Comune di Imperia
+  repoOwner: Comune di Imperia
+
+maintenance:
+  type: contract
+  contractors:
+    - name: "Studio Capacci"
+      until: "2027-12-31"
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - it
+
+it:
+  countryExtensionVersion: "0.2"
+  riuso:
+    codiceIPA: c_e290
+  piattaforme:
+    spid: false
+    cie: false
+    anpr: false
+    pagopa: false
+    io: false
