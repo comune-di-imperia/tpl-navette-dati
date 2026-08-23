@@ -23,6 +23,9 @@
     {% if ha_permesso('dati.leggi') %}
     <a href="{{ url_for('archivio') }}" {% if request.endpoint == 'archivio' %}class="attivo"{% endif %}>Archivio</a>
     {% endif %}
+    {% if ha_permesso('casella.leggi') %}
+    <a href="{{ url_for('casella_sorveglianza') }}" {% if request.endpoint == 'casella_sorveglianza' %}class="attivo"{% endif %}>Casella</a>
+    {% endif %}
     {% if ha_permesso('registro.leggi') %}
     <a href="{{ url_for('registro') }}" {% if request.endpoint == 'registro' %}class="attivo"{% endif %}>Registro</a>
     {% endif %}

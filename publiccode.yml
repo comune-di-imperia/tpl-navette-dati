@@ -1,18 +1,12 @@
-# Descrittore per il riuso del software fra pubbliche amministrazioni,
-# previsto dalle Linee guida AGID in attuazione dell'art. 69 del CAD.
-# Riferimento: https://yml.publiccode.tools
 publiccodeYmlVersion: "0.4"
 
-name: Gestione dati navette a guida autonoma
-applicationSuite: TPL Imperia
+name: tpl-navette-dati
 url: "https://github.com/comune-di-imperia/tpl-navette-dati"
-landingURL: "https://tpl.comune.imperia.it"
-
-softwareVersion: "1.0"
-releaseDate: "2026-08-22"
-
+softwareVersion: "1.0.0"
+releaseDate: "2026-08-23"
 platforms:
   - web
+  - linux
 
 categories:
   - data-analytics
@@ -20,48 +14,40 @@ categories:
   - fleet-management
 
 developmentStatus: stable
-
 softwareType: standalone/web
 
 description:
   it:
-    localisedName: Gestione dati navette a guida autonoma
+    localisedName: Dati navette a guida autonoma
     shortDescription: >-
-      Raccolta, analisi e conservazione dei dati di funzionamento delle navette
-      a guida autonoma in sperimentazione sul territorio comunale.
+      Caricamento, analisi e archiviazione dei dati di funzionamento delle
+      navette a guida autonoma della sperimentazione TPL.
     longDescription: >-
-      L'applicazione riceve gli archivi giornalieri prodotti dall'estrattore di
-      bordo delle navette a guida autonoma, ne verifica l'integrita', ne ricava
-      le grandezze di interesse e li conserva in modo permanente su spazio di
-      archiviazione compatibile S3.
+      Applicazione web per la rendicontazione della sperimentazione del
+      trasporto pubblico locale a guida autonoma del Comune di Imperia. Riceve
+      gli archivi giornalieri prodotti dai computer di bordo delle navette, ne
+      verifica l'integrita', li analizza e calcola le grandezze assenti dai dati
+      grezzi (accelerazione, regime di rotazione, beccheggio), archivia
+      originali ed elaborati su storage S3 e produce un rapporto in PDF.
 
+      Il formato dei dati di bordo non e' documentato dal costruttore ed e'
+      stato ricostruito aprendo i file: i due computer di bordo esportano
+      insiemi di segnali diversi e non distinguibili dal nome dell'archivio,
+      alcune grandezze sono espresse in unita' di misura diverse da quelle
+      attese e un archivio giornaliero puo' contenere campioni di piu' giorni.
+      L'applicazione tiene conto di tutti questi aspetti.
 
-      Dai dati grezzi, che descrivono posizione, assetto e telemetria del
-      veicolo, vengono calcolate tre grandezze che l'estrattore non fornisce:
-      accelerazione, regime di rotazione e beccheggio. Viene inoltre ricostruita
-      la ripartizione fra guida autonoma e guida manuale, pesata sul tempo
-      effettivo di marcia e sulla percorrenza anziche' sul numero di rilevazioni.
-
-
-      Per ogni giornata elaborata viene prodotto un report in PDF. L'accesso e'
-      regolato da tre ruoli distinti e ogni operazione viene annotata in un
-      registro delle attivita', archiviato mensilmente e conservato senza
-      scadenza.
+      Ogni azione finisce in un registro consultabile ed esportabile,
+      archiviato mensilmente. Gli accessi sono regolati da tre ruoli distinti.
     features:
-      - Caricamento degli archivi giornalieri con verifica dell'integrita'
+      - Caricamento degli archivi con verifica di integrita' preventiva
+      - Riconoscimento del computer di bordo dai segnali presenti
       - Calcolo di accelerazione, regime di rotazione e beccheggio
-      - Ripartizione fra guida autonoma e guida manuale
-      - Report in PDF per ogni giornata elaborata
-      - Archiviazione permanente su spazio compatibile S3
-      - Gestione delle utenze con tre ruoli e recupero password
-      - Registro delle attivita' con esportazione e archiviazione mensile
-    documentation: "https://tpl.comune.imperia.it/manuale/it.pdf"
-  en:
-    localisedName: Autonomous shuttle data management
-    shortDescription: >-
-      Collection, analysis and preservation of operating data from the
-      autonomous shuttles being trialled within the municipal area.
-    documentation: "https://tpl.comune.imperia.it/manuale/en.pdf"
+      - Distinzione fra guida autonoma e manuale pesata sulla durata
+      - Archiviazione su storage S3 e consultazione in sola lettura
+      - Rapporti in PDF per singola elaborazione
+      - Registro delle attivita' con archiviazione mensile
+      - Sorveglianza della casella di posta della sperimentazione
 
 legal:
   license: EUPL-1.2
@@ -80,7 +66,7 @@ localisation:
     - it
 
 it:
-  countryExtensionVersion: "0.2"
+  countryExtensionVersion: "1.0"
   riuso:
     codiceIPA: c_e290
   piattaforme:

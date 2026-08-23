@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block titolo %}Casella{% endblock %}
+{% block contenuto %}
+<h1>Casella della sperimentazione</h1>
+
+<p class="minuto">
+  La casella indicata ai cittadini dall'app della sperimentazione viene
+  controllata ogni ora. Quando arrivano messaggi nuovi, chi deve rispondere
+  riceve una email di riepilogo e una notifica sul canale Telegram del progetto.
+  Questa pagina mostra soltanto l'esito dei controlli: i messaggi restano in
+  casella, non letti, e da qui non si risponde.
+</p>
+
+{% if not stato.disponibile %}
+  <div class="avviso attenzione">
+    {% if stato.situazione == 'assente' %}
+      <b>Stato non ancora disponibile.</b> La sorveglianza non ha ancora scritto
+      il suo primo rapporto in <code>{{ stato.percorso }}</code>. Se il servizio
+      &egrave; appena stato installato, l'informazione comparir&agrave; dopo il
+      primo controllo utile.
+    {% else %}
+      <b>Stato non leggibile</b> ({{ stato.motivo }}). Il file
+      <code>{{ stato.percorso }}</code> esiste ma questa applicazione non riesce
+      ad aprirlo: di norma &egrave; una questione di permessi fra l'utente che
+      esegue la sorveglianza e quello che esegue l'applicazione.
+    {% endif %}
+  </div>
+{% else %}
+
+  {% if stato.situazione == 'ferma' %}
+  <div class="avviso attenzione">
+    <b>Attenzione: la sorveglianza sembra ferma.</b> L'ultimo controllo risale a
+    {{ stato.ritardo_minuti }} minuti fa, mentre dovrebbe ripetersi ogni ora.
+    Finch&eacute; resta cos&igrave;, i messaggi che arrivano in casella non
+    vengono segnalati a nessuno.
+  </div>
+  {% endif %}
+
+  <table class="elenco">
+    <tbody>
+      <tr>
+        <th>Stato</th>
+        <td>
+          {% if stato.situazione == 'attiva' %}
+            <b style="color:#24603d">attiva</b> &middot; controllo ogni ora
+          {% elif stato.situazione == 'ferma' %}
+            <b style="color:#a02020">ferma</b>
+          {% else %}
+            da verificare
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Ultimo controllo</th>
+        <td>
+          {% if stato.ultimo_controllo %}
+            {{ stato.ultimo_controllo.strftime('%d/%m/%Y %H:%M') }} UTC
+            {% if stato.ritardo_minuti is not none %}
+              <span class="minuto">({{ stato.ritardo_minuti }} minuti fa)</span>
+            {% endif %}
+          {% else %}mai{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Ultima segnalazione</th>
+        <td>
+          {% if stato.ultima_notifica %}
+            {{ stato.ultima_notifica.strftime('%d/%m/%Y %H:%M') }} UTC &middot;
+            {{ stato.ultimi_notificati }}
+            {{ 'messaggi' if stato.ultimi_notificati != 1 else 'messaggio' }}
+          {% else %}
+            nessuna: da quando la sorveglianza &egrave; attiva non sono arrivati
+            messaggi da gestire
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Casella sorvegliata</th>
+        <td>{{ stato.casella or 'non dichiarata' }}</td>
+      </tr>
+      <tr>
+        <th>Chi viene avvisato</th>
+        <td>
+          {% if stato.destinatari %}
+            {{ stato.destinatari | join(', ') }}
+            {% if stato.copia %}<span class="minuto">(in copia: {{ stato.copia | join(', ') }})</span>{% endif %}
+          {% else %}nessun destinatario configurato{% endif %}
+          {% if stato.telegram %}
+            <br><span class="minuto">
+              e {{ stato.telegram }}
+              {{ 'destinatari' if stato.telegram != 1 else 'destinatario' }}
+              su Telegram
+            </span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Anteprima del testo</th>
+        <td>
+          {% if stato.anteprima %}
+            primi {{ stato.anteprima }} caratteri del messaggio
+          {% else %}
+            disattivata: vengono segnalati solo mittente, oggetto e data
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Chi riceve gli avvisi</h2>
+
+  <h3>Per email</h3>
+  {% if destinatari.email %}
+  <table class="elenco">
+    <thead>
+      <tr><th>Indirizzo</th><th>Come</th><th>Nota</th>
+          {% if ha_permesso('casella.gestione') %}<th>Azioni</th>{% endif %}</tr>
+    </thead>
+    <tbody>
+      {% for v in destinatari.email %}
+      <tr>
+        <td><strong>{{ v.indirizzo }}</strong></td>
+        <td>
+          {% if ha_permesso('casella.gestione') %}
+          <form method="post" action="{{ url_for('casella_destinatari') }}">
+            <input type="hidden" name="csrf" value="{{ gettone() }}">
+            <input type="hidden" name="azione" value="email.modifica">
+            <input type="hidden" name="indirizzo" value="{{ v.indirizzo }}">
+            <input type="hidden" name="nota" value="{{ v.nota }}">
+            <select name="ruolo" onchange="this.form.submit()">
+              <option value="a" {% if v.ruolo == 'a' %}selected{% endif %}>destinatario</option>
+              <option value="cc" {% if v.ruolo == 'cc' %}selected{% endif %}>in copia</option>
+            </select>
+          </form>
+          {% else %}
+            {{ 'destinatario' if v.ruolo == 'a' else 'in copia' }}
+          {% endif %}
+        </td>
+        <td class="minuto">{{ v.nota or '-' }}</td>
+        {% if ha_permesso('casella.gestione') %}
+        <td>
+          <form method="post" action="{{ url_for('casella_destinatari') }}"
+                onsubmit="return confirm('Togliere {{ v.indirizzo }} dagli avvisi?');">
+            <input type="hidden" name="csrf" value="{{ gettone() }}">
+            <input type="hidden" name="azione" value="email.elimina">
+            <input type="hidden" name="indirizzo" value="{{ v.indirizzo }}">
+            <button type="submit">Rimuovi</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="minuto">
+      Nessun destinatario: gli avvisi non arriverebbero a nessuno.
+    </p>
+  {% endif %}
+
+  {% if ha_permesso('casella.gestione') %}
+  <form class="modulo" method="post" action="{{ url_for('casella_destinatari') }}">
+    <input type="hidden" name="csrf" value="{{ gettone() }}">
+    <input type="hidden" name="azione" value="email.aggiungi">
+    <label>Indirizzo <input type="email" name="indirizzo" required></label>
+    <label>Come
+      <select name="ruolo">
+        <option value="a">destinatario</option>
+        <option value="cc">in copia</option>
+      </select>
+    </label>
+    <label>Nota <input type="text" name="nota" maxlength="120" placeholder="ruolo o ufficio"></label>
+    <button type="submit">Aggiungi</button>
+  </form>
+  {% endif %}
+
+  <h3>Su Telegram</h3>
+  {% if destinatari.telegram %}
+  <table class="elenco">
+    <thead>
+      <tr><th>Chi</th><th>Identificativo</th>
+          {% if ha_permesso('casella.gestione') %}<th>Azioni</th>{% endif %}</tr>
+    </thead>
+    <tbody>
+      {% for v in destinatari.telegram %}
+      <tr>
+        <td>
+          {% if ha_permesso('casella.gestione') %}
+          <form method="post" action="{{ url_for('casella_destinatari') }}">
+            <input type="hidden" name="csrf" value="{{ gettone() }}">
+            <input type="hidden" name="azione" value="telegram.modifica">
+            <input type="hidden" name="chat_id" value="{{ v.chat_id }}">
+            <input type="text" name="nome" value="{{ v.nome }}" maxlength="80">
+            <button type="submit">Salva</button>
+          </form>
+          {% else %}{{ v.nome or 'senza nome' }}{% endif %}
+        </td>
+        <td class="minuto">{{ v.chat_id }}</td>
+        {% if ha_permesso('casella.gestione') %}
+        <td>
+          <form method="post" action="{{ url_for('casella_destinatari') }}"
+                onsubmit="return confirm('Togliere questo destinatario da Telegram?');">
+            <input type="hidden" name="csrf" value="{{ gettone() }}">
+            <input type="hidden" name="azione" value="telegram.elimina">
+            <input type="hidden" name="chat_id" value="{{ v.chat_id }}">
+            <button type="submit">Rimuovi</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="minuto">Nessun destinatario su Telegram.</p>
+  {% endif %}
+
+  {% if ha_permesso('casella.gestione') %}
+  <form class="modulo" method="post" action="{{ url_for('casella_destinatari') }}">
+    <input type="hidden" name="csrf" value="{{ gettone() }}">
+    <input type="hidden" name="azione" value="telegram.aggiungi">
+    <label>Nome <input type="text" name="nome" maxlength="80" placeholder="a chi corrisponde"></label>
+    <label>Identificativo <input type="text" name="chat_id" required pattern="-?[0-9]{5,20}"></label>
+    <button type="submit">Aggiungi</button>
+  </form>
+  <p class="minuto">
+    L'identificativo non si inventa: la persona da abilitare deve prima scrivere
+    al bot del progetto,
+    <a href="https://t.me/{{ bot }}" target="_blank" rel="noopener"><b>@{{ bot }}</b></a>
+    (t.me/{{ bot }}), anche solo con un &laquo;ciao&raquo;. Da quel momento il numero
+    della sua conversazione compare fra i messaggi ricevuti dal bot ed &egrave;
+    quello da riportare qui. Chi non ha mai scritto non pu&ograve; ricevere nulla:
+    &egrave; Telegram a impedirlo, non questa pagina.
+  </p>
+  {% endif %}
+
+  <h2>Ultimi messaggi segnalati</h2>
+  {% if stato.ultimi_messaggi %}
+    <table class="elenco">
+      <thead>
+        <tr><th>Quando</th><th>Da</th><th>Oggetto</th><th>Anteprima</th></tr>
+      </thead>
+      <tbody>
+        {% for m in stato.ultimi_messaggi %}
+        <tr>
+          <td>{{ m.data }}</td>
+          <td>{{ m.da }}</td>
+          <td><b>{{ m.oggetto }}</b></td>
+          <td class="minuto">{{ m.anteprima }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="minuto">
+      Sono gli ultimi messaggi per cui &egrave; partita una segnalazione, non
+      tutto il contenuto della casella.
+    </p>
+  {% else %}
+    <p class="minuto">Nessun messaggio segnalato finora.</p>
+  {% endif %}
+
+{% endif %}
+{% endblock %}

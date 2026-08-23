@@ -50,6 +50,12 @@ SCARICA_REPORT = "report.scarica"
 # porta via gli originali.
 SCARICA_ARCHIVIO = "archivio.scarica"
 LEGGE_REGISTRO = "registro.leggi"
+# Sorveglianza della casella a cui scrivono i cittadini: interessa chi risponde
+# loro, quindi anche il tecnico, non solo l'amministratore.
+LEGGE_CASELLA = "casella.leggi"
+# Cambiare i destinatari degli avvisi decide chi viene svegliato quando un
+# cittadino scrive: resta all'amministratore.
+GESTIONE_CASELLA = "casella.gestione"
 
 PERMESSI: Dict[str, frozenset] = {
     AMMINISTRATORE: frozenset(
@@ -60,9 +66,13 @@ PERMESSI: Dict[str, frozenset] = {
             SCARICA_REPORT,
             SCARICA_ARCHIVIO,
             LEGGE_REGISTRO,
+            LEGGE_CASELLA,
+            GESTIONE_CASELLA,
         }
     ),
-    TECNICO: frozenset({CARICA_DATI, LEGGE_DATI, SCARICA_REPORT, SCARICA_ARCHIVIO}),
+    TECNICO: frozenset(
+        {CARICA_DATI, LEGGE_DATI, SCARICA_REPORT, SCARICA_ARCHIVIO, LEGGE_CASELLA}
+    ),
     CONSULTAZIONE: frozenset({LEGGE_DATI, SCARICA_REPORT}),
 }
 

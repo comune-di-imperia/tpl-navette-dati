@@ -44,7 +44,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from . import analisi, db, esplora, manuale, permessi, pipeline, posta
+from . import analisi, casella, db, esplora, manuale, permessi, pipeline, posta
 
 logger = logging.getLogger("tpl.app")
 
@@ -742,6 +742,86 @@ def esporta_registro():
         as_attachment=True,
         download_name=f"registro-navette-{oggi}.csv",
     )
+
+
+@app.route("/casella")
+@richiede_permesso(permessi.LEGGE_CASELLA)
+def casella_sorveglianza():
+    """Stato della sorveglianza della casella a cui scrivono i cittadini."""
+    return render_template(
+        "casella.html",
+        stato=casella.leggi_stato(),
+        destinatari=casella.leggi_destinatari(),
+        bot=casella.nome_bot(),
+    )
+
+
+@app.route("/casella/destinatari", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_CASELLA)
+def casella_destinatari():
+    """Aggiunge, modifica o rimuove chi riceve gli avvisi."""
+    _verifica_gettone()
+    azione = (request.form.get("azione") or "").strip()
+    modulo = request.form
+
+    try:
+        if azione == "email.aggiungi":
+            esito = casella.aggiungi_email(
+                modulo.get("indirizzo", ""),
+                modulo.get("ruolo", "a"),
+                modulo.get("nota", ""),
+            )
+        elif azione == "email.modifica":
+            esito = casella.modifica_email(
+                modulo.get("indirizzo", ""),
+                modulo.get("ruolo", "a"),
+                modulo.get("nota", ""),
+            )
+        elif azione == "email.elimina":
+            esito = casella.elimina_email(modulo.get("indirizzo", ""))
+        elif azione == "telegram.aggiungi":
+            esito = casella.aggiungi_telegram(
+                modulo.get("chat_id", ""), modulo.get("nome", "")
+            )
+        elif azione == "telegram.modifica":
+            esito = casella.modifica_telegram(
+                modulo.get("chat_id", ""), modulo.get("nome", "")
+            )
+        elif azione == "telegram.elimina":
+            esito = casella.elimina_telegram(modulo.get("chat_id", ""))
+        else:
+            abort(400)
+    except ValueError as errore:
+        flash(str(errore), "attenzione")
+        db.registra(
+            "casella.destinatari",
+            utente=session.get("utente", ""),
+            esito="rifiutato",
+            dettaglio=f"{azione}: {errore}",
+            indirizzo_ip=_ip(),
+        )
+        return redirect(url_for("casella_sorveglianza"))
+    except OSError as errore:
+        # Tipicamente permessi sulla cartella condivisa con la sorveglianza.
+        logger.error(
+            "Destinatari non salvati",
+            extra={"context": {"azione": azione, "errore": type(errore).__name__}},
+        )
+        flash(
+            "Non e' stato possibile salvare: il file dei destinatari non e' "
+            "scrivibile da questa applicazione.",
+            "attenzione",
+        )
+        return redirect(url_for("casella_sorveglianza"))
+
+    flash(esito, "esito")
+    db.registra(
+        "casella.destinatari",
+        utente=session.get("utente", ""),
+        dettaglio=f"{azione}: {esito}",
+        indirizzo_ip=_ip(),
+    )
+    return redirect(url_for("casella_sorveglianza"))
 
 
 @app.route("/registro")

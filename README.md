@@ -1,84 +1,99 @@
-# Gestione dati navette a guida autonoma
+# tpl-navette-dati
 
-Applicazione del **Comune di Imperia** per la raccolta, l'analisi e la
-conservazione dei dati di funzionamento delle navette a guida autonoma in
-sperimentazione sul territorio comunale.
+Applicazione per il caricamento e l'analisi dei dati di funzionamento delle
+navette a guida autonoma del **Comune di Imperia**, in esercizio su
+`tpl.comune.imperia.it`.
 
-In esercizio su <https://tpl.comune.imperia.it>.
 
-## A cosa serve
+## A che cosa serve
 
-Ogni giornata di esercizio produce due archivi per navetta, uno per computer di
-bordo. L'applicazione li riceve, ne verifica l'integrità, ne ricava le grandezze
-di interesse, produce un report in PDF e conserva tutto in modo permanente.
+Ogni giorno le navette producono archivi con i parametri di funzionamento
+registrati a bordo. L'applicazione li riceve da un riquadro
+*trascina-e-rilascia*, li analizza, calcola le grandezze che nei dati grezzi
+non ci sono, archivia tutto su storage S3 e produce un rapporto in PDF. Serve
+alla rendicontazione della sperimentazione: gli operatori del Comune devono
+poter caricare i file senza passare dalla riga di comando.
 
-I dati originali non vengono mai modificati: restano disponibili per qualunque
-rielaborazione futura.
+## Come sono fatti i dati
 
-## Cosa calcola
+Il formato non è documentato da nessuna parte: è stato ricostruito aprendo i
+file. Ogni navetta produce **due archivi al giorno**, uno per computer di
+bordo:
 
-L'estrattore di bordo fornisce posizione, assetto e telemetria del veicolo, ma
-non le grandezze cinematiche. Vengono quindi derivate:
+```
+<navetta>_<data>_<VIN>_<data>_<ora>.zip
+  ├── ..._pc1.tar.gz  →  data-extractor_<data>_<ora>.h5
+  └── ..._pc2.tar.gz  →  data-extractor_<data>_<ora>.h5
+```
 
-| Grandezza | Come |
-|---|---|
-| **Accelerazione** | dalla velocità misurata a bordo, non dalla posizione, che sarebbe troppo rumorosa |
-| **Regime di rotazione** | dalla velocità e dalla geometria della ruota |
-| **Beccheggio** | dall'assetto del computer di localizzazione |
+Ogni `.h5` è un *HDFStore* pandas: un gruppo per VIN e, sotto, una tabella per
+segnale, campionata a **10 Hz**. I due computer esportano segnali diversi —
+telemetria (28 segnali) e localizzazione (11 segnali) — e **quale sia l'uno o
+l'altro non è deducibile dal nome del file**: l'applicazione lo riconosce dai
+segnali presenti.
 
-La **ripartizione fra guida autonoma e manuale** è pesata sul tempo effettivo di
-marcia e sulla percorrenza, non sul numero di rilevazioni: il veicolo resta
-fermo per gran parte della giornata, e contare le rilevazioni misurerebbe
-soprattutto in quale modalità è stato parcheggiato.
+Tre unità di misura si prestano a errori grossolani e vanno convertite:
+la velocità è in **m/s**, l'odometro in **metri**, gli angoli di assetto in
+**radianti**.
 
-Controprova sui totali: la distanza ricavata dalla posizione e quella letta
-dall'odometro di bordo concordano entro l'1,5%.
+Infine, un archivio "giornaliero" può contenere campioni di **più giorni**, con
+lunghe pause: la velocità non va calcolata a cavallo delle soste, o si
+ottengono picchi inventati.
+
+## Che cosa calcola
+
+Accelerazione, giri motore e beccheggio, che nei dati di bordo non compaiono.
+
+- **Accelerazione**: derivata dalla velocità misurata a bordo, non dalla
+  posizione — derivare due volte le coordinate amplificherebbe il rumore del
+  posizionamento. I campioni a cavallo di una pausa vengono azzerati.
+- **Giri motore**: nessun segnale di regime esiste fra quelli esportati, quindi
+  si ricavano dalla geometria della ruota. Finché il rapporto di riduzione non
+  è noto il valore prodotto è il regime della **ruota**, e il rapporto lo
+  dichiara esplicitamente invece di far finta di nulla.
+- **Beccheggio**: fra i tre angoli di assetto la documentazione non dice quale
+  sia quale; la corrispondenza è stata stabilita correlando ciascun angolo con
+  la pendenza ricavata dalle coordinate.
+
+Le percentuali fra guida autonoma e manuale sono pesate con la **durata** di
+ogni campione, non contando i campioni: un archivio che copre giorni di sosta
+darebbe altrimenti percentuali prive di senso.
 
 ## Struttura
 
 | Modulo | Ruolo |
 |---|---|
-| `app.py` | applicazione web: accesso, caricamento, coda di elaborazione |
-| `analisi.py` | lettura degli archivi e calcolo delle grandezze |
-| `pipeline.py` | orchestrazione: analisi, archiviazione, report |
-| `referto.py` | composizione del report PDF |
-| `esplora.py` | consultazione dell'archivio |
-| `db.py` | persistenza: utenze, ruoli, elaborazioni, registro |
-| `permessi.py` | matrice dei permessi per ruolo |
-| `manuale.py` | manuale d'uso in italiano e inglese |
-| `deploy/` | unit systemd, vhost, rotazione dei log, installazione |
-| `collaudi/` | verifiche automatiche |
+| `app.py` | interfaccia web: accesso, cruscotto, coda, registro |
+| `analisi.py` | lettura archivi, riconoscimento computer, calcolo grandezze |
+| `pipeline.py` | orchestrazione: analisi → elaborato → archiviazione → rapporto |
+| `referto.py` | composizione del rapporto PDF |
+| `esplora.py` | consultazione dell'archivio S3 |
+| `casella.py` | stato della sorveglianza della casella e destinatari avvisi |
+| `archivio_registro.py` | archiviazione mensile del registro attività |
+| `db.py`, `permessi.py` | utenze, ruoli, registro |
+| `posta.py`, `manuale.py` | invii e manuale d'uso |
+| `deploy/` | unità systemd, vhost, logrotate, fail2ban, installazione |
 
-## Ruoli
+## Note di esercizio
 
-| | Amministratore | Tecnico | Consultazione |
-|---|:---:|:---:|:---:|
-| Consultare dati e archivio | ✔ | ✔ | ✔ |
-| Scaricare i report | ✔ | ✔ | ✔ |
-| Scaricare i file archiviati | ✔ | ✔ | ✘ |
-| Caricare i dati | ✔ | ✔ | ✘ |
-| Leggere il registro | ✔ | ✘ | ✘ |
-| Gestire le utenze | ✔ | ✘ | ✘ |
+Il servizio va avviato con **un solo processo** (più thread): la coda di
+elaborazione vive nel processo, e più processi significherebbero più code
+indipendenti che non si vedono fra loro.
 
-## Installazione
+L'integrità degli archivi si verifica **prima** di accodarli, scorrendo il
+flusso compresso senza estrarlo: il solo controllo del CRC dello ZIP non basta,
+perché è capitato di ricevere archivi con CRC intatto e contenuto troncato
+all'origine.
 
-```
-sudo bash deploy/installa.sh
-```
+I duplicati si riconoscono dall'impronta **SHA-256 del contenuto**, non dal
+nome: un file rinominato resta riconoscibile e l'ordine di caricamento non
+conta.
 
-Installa dipendenze, ambiente virtuale, servizio e host virtuale. Alla prima
-esecuzione crea `/etc/tpl-navette/env` dal modello: vanno compilate le chiavi
-di archiviazione e i parametri di posta prima di rilanciare.
+## Configurazione
 
-## Manuale d'uso
-
-- [Italiano](https://tpl.comune.imperia.it/manuale/it.pdf)
-- [English](https://tpl.comune.imperia.it/manuale/en.pdf)
+Tutti i parametri arrivano da variabili d'ambiente; nel codice non è scritta
+alcuna credenziale. Vedi `deploy/env.esempio`.
 
 ## Licenza
 
-[EUPL-1.2](LICENSE.txt) — Copyright © Comune di Imperia.
-
----
-
-Software Architect: Ing. Carlo Capacci · Software Coder: Claude.ai
+**EUPL-1.2** — European Union Public Licence. Vedi [`LICENSE`](LICENSE).
