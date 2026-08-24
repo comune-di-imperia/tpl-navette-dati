@@ -438,7 +438,18 @@ def verifica_credenziali(utente: str, password: str) -> Dict[str, Any]:
         return {"utente": None, "motivo": "utenza inesistente"}
 
     if riga["bloccato_fino"] and riga["bloccato_fino"] > _adesso():
-        return {"utente": None, "motivo": "bloccato per troppi tentativi"}
+        # I minuti servono al messaggio: dire "riprova piu' tardi" senza dire
+        # quanto lascia la persona a ritentare a vuoto.
+        # Le date sono stringhe ISO: si confrontano bene fra loro, ma per
+        # sapere quanto manca vanno interpretate.
+        restano = datetime.fromisoformat(riga["bloccato_fino"]) - datetime.now(
+            timezone.utc
+        )
+        return {
+            "utente": None,
+            "motivo": "bloccato per troppi tentativi",
+            "minuti": max(1, int(restano.total_seconds() // 60) + 1),
+        }
 
     if not riga["hash_password"]:
         cifra_password(password)

@@ -44,7 +44,17 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 
-from . import analisi, casella, db, esplora, manuale, permessi, pipeline, posta
+from . import (
+    analisi,
+    casella,
+    db,
+    dispositivi,
+    esplora,
+    manuale,
+    permessi,
+    pipeline,
+    posta,
+)
 
 logger = logging.getLogger("tpl.app")
 
@@ -240,6 +250,9 @@ app.jinja_env.globals["accesso_libero"] = accesso_libero
 # il template NASCONDE cio' che l'utente non puo' fare; a impedirlo davvero e'
 # il decoratore sulla rotta, non questo
 app.jinja_env.globals["ha_permesso"] = _ha_permesso
+app.jinja_env.globals["manuali_passeggeri"] = lambda: manuali_passeggeri_disponibili()
+app.jinja_env.globals["guida_bordo"] = lambda: guida_bordo_disponibile()
+app.jinja_env.globals["locandina"] = lambda: locandina_disponibile()
 
 
 @app.route("/accesso", methods=["GET", "POST"])
@@ -274,7 +287,10 @@ def accesso():
             dettaglio=esito["motivo"],
             indirizzo_ip=_ip(),
         )
-        return render_template("accesso.html", errore=_ERRORE_ACCESSO), 401
+        return (
+            render_template("accesso.html", errore=_messaggio_rifiuto(esito)),
+            401,
+        )
 
     # azzeramento prima di scrivere: impedisce la session fixation, in cui
     # l'attaccante impone alla vittima una sessione che conosce gia'
@@ -293,6 +309,54 @@ def accesso():
 
 
 _ERRORE_ACCESSO = "Credenziali non valide."
+
+
+def _messaggio_rifiuto(esito: dict) -> str:
+    """Che cosa dire a chi non riesce a entrare.
+
+    Su utenza sbagliata o password errata il messaggio resta generico: dire
+    quale delle due regalerebbe l'elenco degli iscritti a chi tenta nomi a
+    caso.
+
+    Negli altri casi la password e' giusta e il generico fa danno: la persona
+    la ridigita, sbaglia davvero, e finisce per bloccarsi da sola. Qui si dice
+    che cosa e' successo e che cosa fare, al prezzo di confermare che
+    quell'utenza esiste - prezzo accettabile su un'applicazione a utenza
+    chiusa come questa.
+    """
+    motivo = esito.get("motivo", "")
+
+    if motivo == "bloccato per troppi tentativi":
+        minuti = esito.get("minuti", BLOCCO_MINUTI_PREDEFINITO)
+        quando = "un minuto" if minuti == 1 else f"{minuti} minuti"
+        return (
+            f"Utenza bloccata dopo troppi tentativi. Riprova fra {quando}, "
+            "oppure chiedi a un amministratore di sbloccarla."
+        )
+
+    if motivo == "primo accesso non ancora effettuato":
+        return (
+            "Questa utenza non ha ancora una password: usa il collegamento "
+            "ricevuto nell'invito. Se e' scaduto, chiedine uno nuovo con "
+            "\"Password dimenticata\"."
+        )
+
+    if motivo.startswith("utenza ") and motivo != "utenza inesistente":
+        # gli stati sono scritti al maschile nel database, ma qui il soggetto
+        # e' "utenza": senza questa resa si leggerebbe "Utenza sospeso"
+        stato = {"sospeso": "sospesa", "archiviato": "archiviata"}.get(
+            motivo.removeprefix("utenza "), "non attiva"
+        )
+        return (
+            f"Utenza {stato}: le credenziali sono corrette ma l'accesso e' "
+            "chiuso. Rivolgiti a un amministratore."
+        )
+
+    return _ERRORE_ACCESSO
+
+
+# Serve solo come ripiego se il motivo arriva senza i minuti residui.
+BLOCCO_MINUTI_PREDEFINITO = 15
 
 
 @app.route("/uscita")
@@ -624,6 +688,87 @@ def scarica_manuale(lingua: str):
     )
 
 
+# Manuale destinato ai passeggeri: e' altra cosa dal manuale di questa
+# applicazione, e viene da fuori (lo si aggiorna sostituendo il file, non
+# ricompilando il codice). Sta in `manuali/` dentro la cartella dei dati.
+MANUALI_PASSEGGERI = {
+    "it": "Manuale Utente App Bus a Guida Autonoma.pdf",
+    "en": "Manuale Utente App Bus a Guida Autonoma - EN.pdf",
+    "fr": "Manuale Utente App Bus a Guida Autonoma - FR.pdf",
+    "de": "Manuale Utente App Bus a Guida Autonoma - DE.pdf",
+}
+
+# Foglio di una pagina per chi sta a bordo: come registrare le salite e come
+# tornare alla pagina di scansione se l'icona sparisce.
+GUIDA_BORDO = "Guida Personale di Bordo - Registrare le salite.pdf"
+
+# Foglio da appendere alle fermate: codice QR e poche righe in quattro lingue.
+LOCANDINA = "Locandina QR Accesso Servizio.pdf"
+
+
+def cartella_manuali() -> Path:
+    return Path(os.environ.get("TPL_DATI", "/var/lib/tpl-navette")) / "manuali"
+
+
+def manuali_passeggeri_disponibili() -> list:
+    """Lingue per cui il file esiste davvero: il menu non promette il vuoto."""
+    cartella = cartella_manuali()
+    return [l for l, nome in MANUALI_PASSEGGERI.items() if (cartella / nome).exists()]
+
+
+@app.route("/manuale/passeggeri/<lingua>.pdf")
+def scarica_manuale_passeggeri(lingua: str):
+    """Manuale per i passeggeri. Pubblico: serve a chi sale a bordo."""
+    nome = MANUALI_PASSEGGERI.get(lingua)
+    if not nome:
+        abort(404)
+    percorso = cartella_manuali() / nome
+    if not percorso.exists():
+        abort(404)
+    return send_file(
+        percorso,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"manuale-passeggeri-{lingua}.pdf",
+    )
+
+
+def locandina_disponibile() -> bool:
+    return (cartella_manuali() / LOCANDINA).exists()
+
+
+@app.route("/locandina.pdf")
+def scarica_locandina():
+    """Locandina per le fermate. Pubblica: e' fatta per essere diffusa."""
+    percorso = cartella_manuali() / LOCANDINA
+    if not percorso.exists():
+        abort(404)
+    return send_file(
+        percorso,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="locandina-navette.pdf",
+    )
+
+
+def guida_bordo_disponibile() -> bool:
+    return (cartella_manuali() / GUIDA_BORDO).exists()
+
+
+@app.route("/manuale/bordo.pdf")
+def scarica_guida_bordo():
+    """Guida per il personale di bordo. Pubblica: serve a chi guida."""
+    percorso = cartella_manuali() / GUIDA_BORDO
+    if not percorso.exists():
+        abort(404)
+    return send_file(
+        percorso,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name="guida-personale-di-bordo.pdf",
+    )
+
+
 # ------------------------------------------------------------ archivio su S3
 def _consenti_prefisso(chiave: str) -> None:
     """Alcuni rami dell'archivio non sono per tutti.
@@ -822,6 +967,80 @@ def casella_destinatari():
         indirizzo_ip=_ip(),
     )
     return redirect(url_for("casella_sorveglianza"))
+
+
+# ------------------------------------------------- dispositivi di bordo
+@app.route("/dispositivi")
+@richiede_permesso(permessi.GESTIONE_DISPOSITIVI)
+def dispositivi_bordo():
+    """Telefoni di servizio abilitati a leggere i codici di salita."""
+    elenco, errore = [], ""
+    try:
+        elenco = dispositivi.elenco()
+    except dispositivi.ErroreDispositivi as guasto:
+        errore = str(guasto)
+
+    # Il collegamento appena generato si mostra una volta sola, subito dopo
+    # l'operazione: non va conservato ne' in pagina ne' altrove.
+    appena = session.pop("dispositivo_nuovo", None)
+    qr = ""
+    if appena and appena.get("collegamento"):
+        try:
+            qr = dispositivi.qr_svg(appena["collegamento"])
+        except Exception:
+            logger.exception("Codice QR non generato")
+
+    return render_template(
+        "dispositivi.html", elenco=elenco, errore=errore, appena=appena, qr=qr
+    )
+
+
+@app.route("/dispositivi/azione", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_DISPOSITIVI)
+def dispositivi_azione():
+    """Registra, rigenera o revoca un dispositivo di bordo."""
+    _verifica_gettone()
+    azione = (request.form.get("azione") or "").strip()
+    identificativo = (request.form.get("id") or "").strip()
+
+    try:
+        if azione == "crea":
+            esito = dispositivi.crea(
+                request.form.get("etichetta", ""), request.form.get("mezzo", "")
+            )
+            session["dispositivo_nuovo"] = esito
+            messaggio = f"Registrato {esito['etichetta']} ({esito['mezzo']})."
+        elif azione == "rigenera":
+            esito = dispositivi.rigenera(identificativo)
+            esito["etichetta"] = request.form.get("etichetta", "")
+            esito["mezzo"] = request.form.get("mezzo", "")
+            session["dispositivo_nuovo"] = esito
+            messaggio = "Nuovo collegamento di attivazione generato."
+        elif azione == "revoca":
+            dispositivi.revoca(identificativo)
+            messaggio = "Dispositivo revocato: non puo' piu' leggere i codici."
+        else:
+            abort(400)
+    except (ValueError, dispositivi.ErroreDispositivi) as errore:
+        flash(str(errore), "attenzione")
+        db.registra(
+            "dispositivi",
+            utente=session.get("utente", ""),
+            esito="rifiutato",
+            dettaglio=f"{azione}: {errore}",
+            indirizzo_ip=_ip(),
+        )
+        return redirect(url_for("dispositivi_bordo"))
+
+    flash(messaggio, "esito")
+    db.registra(
+        "dispositivi",
+        utente=session.get("utente", ""),
+        bersaglio=identificativo or request.form.get("mezzo", ""),
+        dettaglio=f"{azione}: {messaggio}",
+        indirizzo_ip=_ip(),
+    )
+    return redirect(url_for("dispositivi_bordo"))
 
 
 @app.route("/registro")

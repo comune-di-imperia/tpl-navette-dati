@@ -56,6 +56,9 @@ LEGGE_CASELLA = "casella.leggi"
 # Cambiare i destinatari degli avvisi decide chi viene svegliato quando un
 # cittadino scrive: resta all'amministratore.
 GESTIONE_CASELLA = "casella.gestione"
+# Abilitare o revocare un telefono di bordo incide sul servizio in strada:
+# resta all'amministratore, come la gestione delle utenze.
+GESTIONE_DISPOSITIVI = "dispositivi.gestione"
 
 PERMESSI: Dict[str, frozenset] = {
     AMMINISTRATORE: frozenset(
@@ -68,6 +71,7 @@ PERMESSI: Dict[str, frozenset] = {
             LEGGE_REGISTRO,
             LEGGE_CASELLA,
             GESTIONE_CASELLA,
+            GESTIONE_DISPOSITIVI,
         }
     ),
     TECNICO: frozenset(

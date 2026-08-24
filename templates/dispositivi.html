@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block titolo %}Dispositivi{% endblock %}
+{% block contenuto %}
+<h1>Dispositivi di bordo</h1>
+
+<p class="minuto">
+  Sono i telefoni di servizio abilitati a leggere il codice di salita dei
+  passeggeri. <b>L'abilitazione sta nel telefono, non nella persona</b>: chi
+  prende in mano un telefono gi&agrave; abbinato non deve fare nulla, e
+  l'abbinamento vale un anno. Serve un collegamento nuovo solo quando cambia il
+  telefono o entra in servizio un mezzo nuovo.
+</p>
+
+{% if errore %}
+  <div class="avviso attenzione">
+    <b>Funzione non disponibile.</b> {{ errore }}
+  </div>
+{% endif %}
+
+{% if appena %}
+  <div class="avviso">
+    <h2 style="margin-top:0">Abilita il telefono adesso</h2>
+    <p>
+      Fai inquadrare questo codice con la fotocamera del telefono da abilitare:
+      l'abbinamento &egrave; immediato e vale <b>un anno</b>.
+    </p>
+    {% if qr %}
+    <div style="text-align:center; margin: 12px 0;">{{ qr | safe }}</div>
+    {% endif %}
+
+    <div class="box box-warn">
+      <p><b>Va aperto con il browser del telefono</b> &mdash; Safari su iPhone,
+      Chrome su Android &mdash; cio&egrave; quello che la fotocamera apre da
+      sola. Se il codice viene letto con un'applicazione &laquo;lettore
+      QR&raquo; che ha un browser interno, l'abbinamento sembra riuscito ma le
+      registrazioni delle salite falliranno: quel browser non condivide i
+      cookie con il resto del telefono.</p>
+    </div>
+
+    <p>
+      Subito dopo l'abbinamento il telefono si porta da solo sulla
+      <b>pagina di scansione</b>, con il nome del mezzo in testa. L&igrave;
+      bisogna toccare <b>Aggiungi alla schermata iniziale</b>: da quel momento
+      l'autista trova un'icona e non deve pi&ugrave; cercare nulla.
+    </p>
+    <p class="minuto">
+      A ogni turno non si rif&agrave; niente: si tocca l'icona e si inquadrano i
+      codici dei passeggeri. Il collegamento qui sotto, invece,
+      <b>non va conservato</b>: vale una volta sola ed &egrave; gi&agrave; stato
+      speso.
+    </p>
+
+    <p class="minuto">
+      <b>Il collegamento qui sotto &egrave; un segreto.</b> Serve solo se chi deve
+      essere abilitato non &egrave; presente, ma inviarlo per messaggio lo lascia
+      in una chat per sempre: in quel caso, appena possibile, revoca il
+      dispositivo e rigeneralo.
+    </p>
+    <p><code>{{ appena.collegamento }}</code></p>
+    <p class="minuto">
+      Questo riquadro compare una volta sola: ricaricando la pagina sparisce.
+    </p>
+  </div>
+{% endif %}
+
+{% if not errore %}
+<h2>Registra un telefono</h2>
+<form class="modulo" method="post" action="{{ url_for('dispositivi_azione') }}">
+  <input type="hidden" name="csrf" value="{{ gettone() }}">
+  <input type="hidden" name="azione" value="crea">
+  <label>Etichetta <input type="text" name="etichetta" required maxlength="60"
+         placeholder="es. Bus 02"></label>
+  <label>Codice del mezzo <input type="text" name="mezzo" required maxlength="30"
+         placeholder="es. BUS-02"></label>
+  <button type="submit">Registra e mostra il codice</button>
+</form>
+<p class="minuto">
+  L'etichetta serve a riconoscere il telefono nell'elenco; il codice del mezzo
+  &egrave; quello con cui il veicolo compare nei dati della sperimentazione.
+</p>
+{% endif %}
+
+<h2>Telefoni registrati</h2>
+{% if elenco %}
+<table class="elenco">
+  <thead>
+    <tr><th>Etichetta</th><th>Mezzo</th><th>Stato</th><th>Ultimo uso</th><th>Azioni</th></tr>
+  </thead>
+  <tbody>
+    {% for d in elenco %}
+    <tr>
+      <td><strong>{{ d.etichetta }}</strong></td>
+      <td>{{ d.mezzo }}</td>
+      <td>
+        <span class="stato {{ 'completata' if d.stato == 'attivo' else 'fallita' }}">{{ d.stato }}</span>
+      </td>
+      <td class="minuto">{{ d.ultimo_uso }}</td>
+      <td>
+        <form method="post" action="{{ url_for('dispositivi_azione') }}"
+              onsubmit="return confirm('Generare un nuovo collegamento per {{ d.etichetta }}? Quello precedente smette di valere.');"
+              style="display:inline">
+          <input type="hidden" name="csrf" value="{{ gettone() }}">
+          <input type="hidden" name="azione" value="rigenera">
+          <input type="hidden" name="id" value="{{ d.id }}">
+          <input type="hidden" name="etichetta" value="{{ d.etichetta }}">
+          <input type="hidden" name="mezzo" value="{{ d.mezzo }}">
+          <button type="submit">Rigenera</button>
+        </form>
+        {% if d.stato == 'attivo' %}
+        <form method="post" action="{{ url_for('dispositivi_azione') }}"
+              onsubmit="return confirm('Revocare {{ d.etichetta }}? Da quel momento non legge piu i codici di salita.');"
+              style="display:inline">
+          <input type="hidden" name="csrf" value="{{ gettone() }}">
+          <input type="hidden" name="azione" value="revoca">
+          <input type="hidden" name="id" value="{{ d.id }}">
+          <button type="submit">Revoca</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="minuto">
+  <b>Rigenera</b> serve quando il telefono viene sostituito o i dati
+  dell'applicazione vengono cancellati. <b>Revoca</b> quando un telefono si
+  smarrisce: ha effetto immediato.
+</p>
+{% elif not errore %}
+  <p class="minuto">Nessun telefono registrato.</p>
+{% endif %}
+
+{% endblock %}

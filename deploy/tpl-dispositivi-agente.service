@@ -1,0 +1,31 @@
+[Unit]
+# Esegue per conto dell'applicazione web le operazioni sui dispositivi di
+# bordo. Esiste perche' l'applicazione gira senza facolta' di elevare i
+# privilegi, e quella protezione non va tolta per una funzione usata qualche
+# volta l'anno.
+Description=Operazioni sui dispositivi di bordo richieste dall'applicazione TPL
+After=network.target
+
+[Service]
+Type=simple
+# Servono i privilegi per richiamare il comando di gestione, che a sua volta
+# passa all'utenza di servizio dell'applicazione di bordo.
+User=root
+ExecStart=/usr/local/bin/tpl-dispositivi-agente
+Restart=on-failure
+RestartSec=5
+
+# Scrive soltanto la cartella delle richieste; il resto resta in sola lettura.
+# L'applicazione di bordo tiene i suoi dati in PostgreSQL: senza i socket di
+# rete il comando non raggiungerebbe il database.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tpl-dispositivi
+ProtectHome=true
+PrivateTmp=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
