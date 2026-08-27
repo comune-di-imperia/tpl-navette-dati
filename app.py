@@ -54,6 +54,7 @@ from . import (
     permessi,
     pipeline,
     posta,
+    statistiche,
 )
 
 logger = logging.getLogger("tpl.app")
@@ -696,6 +697,7 @@ MANUALI_PASSEGGERI = {
     "en": "Manuale Utente App Bus a Guida Autonoma - EN.pdf",
     "fr": "Manuale Utente App Bus a Guida Autonoma - FR.pdf",
     "de": "Manuale Utente App Bus a Guida Autonoma - DE.pdf",
+    "es": "Manuale Utente App Bus a Guida Autonoma - ES.pdf",
 }
 
 # Foglio di una pagina per chi sta a bordo: come registrare le salite e come
@@ -887,6 +889,57 @@ def esporta_registro():
         as_attachment=True,
         download_name=f"registro-navette-{oggi}.csv",
     )
+
+
+@app.route("/statistiche")
+@richiede_permesso(permessi.LEGGE_STATISTICHE)
+def statistiche_sperimentazione():
+    """Numeri della sperimentazione, letti dai dati anonimi dei passeggeri.
+
+    Se il database dell'applicazione di bordo non risponde la pagina si apre
+    lo stesso e lo dice: e' un servizio di un altro programma, e un guasto li'
+    non deve somigliare a un guasto qui.
+    """
+    try:
+        return render_template(
+            "statistiche.html", dati=statistiche.raccogli(), errore=None)
+    except statistiche.DatiNonDisponibili as guasto:
+        logger.warning(
+            "statistiche non disponibili", extra={"context": {"causa": str(guasto)}})
+        return render_template("statistiche.html", dati=None, errore=str(guasto))
+
+
+@app.route("/statistiche.pdf")
+@richiede_permesso(permessi.LEGGE_STATISTICHE)
+def statistiche_pdf():
+    """Le stesse statistiche in un foglio A4, da allegare a una relazione.
+
+    L'impaginato e' un altro: la pagina ha il menu e i riquadri affiancati,
+    qui serve un documento che si stampi e si archivi. I numeri sono gli
+    stessi, letti nello stesso momento.
+    """
+    from weasyprint import HTML
+
+    try:
+        dati = statistiche.raccogli()
+    except statistiche.DatiNonDisponibili as guasto:
+        logger.warning(
+            "statistiche non disponibili",
+            extra={"context": {"causa": str(guasto)}})
+        abort(503)
+
+    documento = render_template("statistiche_pdf.html", dati=dati)
+    # La base serve a weasyprint per trovare l'immagine della mappa, che sta
+    # fra i file statici e nel documento e' indicata per nome.
+    base = str(Path(app.static_folder).resolve()) + "/"
+    pdf = HTML(string=documento, base_url=base).write_pdf()
+
+    quando = datetime.now().strftime("%Y%m%d")
+    risposta = make_response(pdf)
+    risposta.headers["Content-Type"] = "application/pdf"
+    risposta.headers["Content-Disposition"] = (
+        f'attachment; filename="statistiche-sperimentazione-{quando}.pdf"')
+    return risposta
 
 
 @app.route("/casella")

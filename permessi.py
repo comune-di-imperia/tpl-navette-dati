@@ -59,6 +59,10 @@ GESTIONE_CASELLA = "casella.gestione"
 # Abilitare o revocare un telefono di bordo incide sul servizio in strada:
 # resta all'amministratore, come la gestione delle utenze.
 GESTIONE_DISPOSITIVI = "dispositivi.gestione"
+# Le statistiche non contengono nominativi, ma restano per ora riservate
+# all'amministratore: finche' la sperimentazione e' in corso, i numeri
+# sull'adesione sono materia del committente prima che di chi opera.
+LEGGE_STATISTICHE = "statistiche.leggi"
 
 PERMESSI: Dict[str, frozenset] = {
     AMMINISTRATORE: frozenset(
@@ -72,10 +76,17 @@ PERMESSI: Dict[str, frozenset] = {
             LEGGE_CASELLA,
             GESTIONE_CASELLA,
             GESTIONE_DISPOSITIVI,
+            LEGGE_STATISTICHE,
         }
     ),
     TECNICO: frozenset(
-        {CARICA_DATI, LEGGE_DATI, SCARICA_REPORT, SCARICA_ARCHIVIO, LEGGE_CASELLA}
+        {
+            CARICA_DATI,
+            LEGGE_DATI,
+            SCARICA_REPORT,
+            SCARICA_ARCHIVIO,
+            LEGGE_CASELLA,
+        }
     ),
     CONSULTAZIONE: frozenset({LEGGE_DATI, SCARICA_REPORT}),
 }

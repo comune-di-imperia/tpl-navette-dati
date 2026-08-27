@@ -75,6 +75,9 @@ darebbe altrimenti percentuali prive di senso.
 | `referto.py` | composizione del rapporto PDF |
 | `esplora.py` | consultazione dell'archivio S3 |
 | `casella.py` | stato della sorveglianza della casella e destinatari avvisi |
+| `statistiche.py` | numeri della sperimentazione, letti in forma anonima |
+| `fermate.py` | le fermate con le coordinate, per attribuire le salite |
+| `mappa.py` | sfondo cartografico del percorso, composto una volta sola |
 | `archivio_registro.py` | archiviazione mensile del registro attività |
 | `db.py`, `permessi.py` | utenze, ruoli, registro |
 | `posta.py`, `manuale.py` | invii e manuale d'uso |
@@ -124,6 +127,37 @@ Il fondo pagina espone inoltre, a chi ne ha bisogno, il manuale
 dell'applicazione, quelli per i passeggeri nelle quattro lingue, la guida per il
 personale di bordo e la locandina per le fermate: si aggiornano sostituendo il
 file nella cartella dei dati, senza ricompilare nulla.
+
+## Le statistiche della sperimentazione
+
+La pagina **Statistiche** raccoglie l'adesione, l'utilizzo, le caratteristiche
+di chi viaggia, le fermate e il gradimento, e le esporta in un PDF da allegare
+alle relazioni.
+
+I dati stanno nel database dell'applicazione dei passeggeri, che e' un altro
+programma. Si leggono con un'utenza che vede **soltanto le viste anonime** —
+`vista_utilizzo`, `vista_ricerca`, `vista_registrazioni` — e a cui le tabelle
+con nome, cognome ed email sono negate dal database stesso. Non e' una cautela
+scritta qui dentro: e' un permesso che non esiste, e resta vero anche se un
+domani qualcuno scrivesse la query sbagliata.
+
+Due cose che l'applicazione di bordo non fornisce, e che vanno dette invece di
+nasconderle. La prima: **non registra quale fermata** sia stata inquadrata, e
+della salita resta la sola posizione del mezzo; ogni salita viene percio'
+attribuita alla fermata piu' vicina entro cento metri, soglia scelta perche' il
+veicolo, quando l'operatore inquadra il codice, puo' avere gia' accostato. La
+seconda: molte corse **restano aperte**, perche' nessuno le chiude con una
+valutazione, e per questo la durata e' riportata come valore mediano — la media
+ne risulterebbe moltiplicata per sei.
+
+Lo sfondo della mappa e' scaricato **una volta sola** e servito
+dall'applicazione: chi apre la pagina non contatta alcun servizio esterno, e il
+Comune non manda gli indirizzi dei suoi visitatori a terzi per mostrare una
+mappa. La cartografia e' OpenStreetMap, licenza ODbL, con l'attribuzione in
+pagina. L'immagine viene ruotata finche' il percorso non e' orizzontale: cosi'
+sta in una striscia invece che in un quadrato mezzo vuoto, e la pagina avverte
+che il nord non e' in alto. Si rigenera con `python3 -m tpl_navette.mappa`,
+necessario solo se le fermate cambiano.
 
 ## Configurazione
 

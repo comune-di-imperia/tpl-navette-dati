@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% block titolo %}Statistiche{% endblock %}
+{% block contenuto %}
+{% macro blocco(titolo, voci) %}
+<div>
+  <h3>{{ titolo }}</h3>
+  {% if voci %}
+  {% set piu_alta = voci | map(attribute='quante') | max %}
+  <table class="elenco">
+    <tbody>
+      {% for voce in voci %}
+      <tr>
+        <th style="width: 42%">{{ voce.etichetta }}</th>
+        <td>
+          <div class="istogramma">
+            <i style="width: {{ voce.quante / piu_alta * 100 }}%"></i>
+            <span>{{ voce.quante }} &middot; {{ voce.quota }}%</span>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="minuto">Nessun dato.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<div class="testa-pagina">
+  <h1>Statistiche della sperimentazione</h1>
+  {% if not errore %}
+  <a class="bottone" href="{{ url_for('statistiche_pdf') }}">Scarica in PDF</a>
+  {% endif %}
+</div>
+
+<p class="minuto">
+  I numeri arrivano dall'applicazione dei passeggeri, letti da un'utenza che
+  vede <b>soltanto i dati resi anonimi</b>: fascia d'et&agrave;, sesso, rapporto
+  con la citt&agrave;, professione, orari e voti. Nome, cognome e indirizzo
+  email non sono raggiungibili da questa pagina &mdash; non per scelta di
+  programmazione, ma perch&eacute; il database li nega. La data di nascita non
+  compare perch&eacute; l'applicazione non la conserva pi&ugrave;: del profilo
+  resta la sola fascia d'et&agrave;.
+  {% if dati %}Le corse dei mezzi di collaudo sono escluse.{% endif %}
+</p>
+
+{% if errore %}
+  <div class="avviso errore">
+    <b>Numeri non disponibili.</b> {{ errore }}
+  </div>
+{% else %}
+
+<div class="riquadri">
+  <div class="riquadro">
+    <span class="cifra">{{ dati.registrazioni.totale }}</span>
+    <span class="voce">persone registrate</span>
+    <span class="nota">
+      {{ dati.registrazioni.con_consenso }} con il consenso prestato{% if dati.registrazioni.cancellate %},
+      {{ dati.registrazioni.cancellate }} cancellate{% endif %}
+    </span>
+  </div>
+  <div class="riquadro">
+    <span class="cifra">{{ dati.corse.totale }}</span>
+    <span class="voce">corse registrate</span>
+    <span class="nota">in {{ dati.corse.giorni_di_servizio }} giorni di servizio</span>
+  </div>
+  <div class="riquadro">
+    <span class="cifra">{{ dati.corse.durata_tipica_min }}<small> min</small></span>
+    <span class="voce">durata tipica</span>
+    <span class="nota">valore mediano, sulle corse concluse</span>
+  </div>
+  <div class="riquadro">
+    <span class="cifra">{{ dati.voti.media if dati.voti.media else '&mdash;' | safe }}</span>
+    <span class="voce">voto medio</span>
+    <span class="nota">{{ dati.voti.totale }} valutazioni su {{ dati.corse.totale }} corse</span>
+  </div>
+  <div class="riquadro">
+    <span class="cifra">{{ dati.corse.quota_posizione }}<small>%</small></span>
+    <span class="voce">corse localizzate</span>
+    <span class="nota">{{ dati.corse.con_posizione }} con la posizione del mezzo</span>
+  </div>
+</div>
+
+{% if dati.corse.di_prova %}
+<div class="avviso attenzione">
+  Sono escluse <b>{{ dati.corse.di_prova }}</b> corse dei mezzi di collaudo.
+  Compaiono nel database ma non sono servizio.
+</div>
+{% endif %}
+
+<h2>Registrazioni</h2>
+<table class="elenco stretta">
+  <tbody>
+    <tr><th>Persone registrate</th><td><b>{{ dati.registrazioni.totale }}</b></td></tr>
+    <tr><th>Con indirizzo verificato</th><td>{{ dati.registrazioni.verificate }}</td></tr>
+    <tr><th>Con consenso prestato</th><td>{{ dati.registrazioni.con_consenso }}</td></tr>
+    <tr>
+      <th>Consenso revocato</th>
+      <td>{{ dati.registrazioni.consenso_revocato }}</td>
+    </tr>
+    <tr><th>Account cancellati</th><td>{{ dati.registrazioni.cancellate }}</td></tr>
+    <tr>
+      <th>Accesso con Google o Apple</th>
+      <td>
+        {{ dati.registrazioni.con_provider }}
+        <span class="minuto">
+          ({{ dati.registrazioni.totale - dati.registrazioni.con_provider }} con
+          indirizzo e password)
+        </span>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="colonne" style="margin-top: 16px">
+  {{ blocco("Lingua in cui è stato prestato il consenso", dati.per_lingua) }}
+  {{ blocco("Fascia d'età dei registrati", dati.anagrafica.fascia_eta) }}
+</div>
+<div class="colonne">
+  {{ blocco("Rapporto con la città", dati.anagrafica.categoria) }}
+  {{ blocco("Condizione professionale", dati.anagrafica.professione) }}
+</div>
+
+<h2>Andamento delle corse</h2>
+{% set massimo = dati.per_giorno | map(attribute='quante') | max %}
+<div class="grafico">
+  {% for punto in dati.per_giorno %}
+    <div class="colonna" title="{{ punto.giorno.strftime('%d/%m/%Y') }}: {{ punto.quante }}">
+      <i style="height: {{ (punto.quante / massimo * 100) if massimo else 0 }}%"></i>
+    </div>
+  {% endfor %}
+</div>
+<p class="minuto">
+  Corse al giorno negli ultimi {{ dati.per_giorno | length }} giorni.
+  {% if dati.corse.prima %}
+  La prima corsa registrata &egrave; del
+  {{ dati.corse.prima.strftime('%d/%m/%Y') }}.
+  {% endif %}
+</p>
+
+<h2>A che ora si viaggia</h2>
+{% if dati.per_ora %}
+{% set piu_alta = dati.per_ora | map(attribute='quante') | max %}
+<table class="elenco">
+  <tbody>
+    {% for fascia in dati.per_ora %}
+    <tr>
+      <th style="width: 14%">{{ '%02d' | format(fascia.ora) }}:00</th>
+      <td>
+        <div class="istogramma">
+          <i style="width: {{ fascia.quante / piu_alta * 100 }}%"></i>
+          <span>{{ fascia.quante }}</span>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="minuto">Nessuna corsa registrata.</p>
+{% endif %}
+
+<h2>Chi sale a bordo</h2>
+<p class="minuto">
+  Le caratteristiche di chi ha effettivamente viaggiato, che non coincidono con
+  quelle di chi si &egrave; registrato: molti si iscrivono e non salgono, altri
+  salgono pi&ugrave; volte.
+</p>
+<div class="colonne">
+  {{ blocco("Fascia d'età", dati.fascia_eta) }}
+  {{ blocco('Sesso', dati.sesso) }}
+  {{ blocco("Rapporto con la città", dati.categoria) }}
+  {{ blocco('Condizione professionale', dati.professione) }}
+</div>
+
+<h2>Mezzi e conclusione della corsa</h2>
+{% if dati.corse.ancora_aperte %}
+<p class="minuto">
+  {{ dati.corse.ancora_aperte }} corse risultano <b>ancora aperte</b>: nessuno
+  le ha chiuse con una valutazione e non sono state sostituite da una nuova
+  salita. Sono quelle che gonfiano la durata media, ed &egrave; il motivo per
+  cui sopra si riporta il valore mediano.
+</p>
+{% endif %}
+<div class="colonne">
+  {{ blocco('Corse per mezzo', dati.per_mezzo) }}
+  {{ blocco("Come si è chiusa", dati.per_chiusura) }}
+</div>
+
+<h2>Dove si sale</h2>
+{% if dati.fermate %}
+<p class="minuto">
+  L'applicazione di bordo <b>non registra quale fermata</b> sia stata
+  inquadrata: della salita resta la sola posizione del mezzo. Ogni salita
+  &egrave; qui attribuita alla fermata pi&ugrave; vicina entro cento metri
+  &mdash; il veicolo che ha gi&agrave; accostato, o che riparte mentre
+  l'operatore inquadra il codice, si trova a qualche decina di metri dal palo.
+</p>
+
+{% if dati.mappa %}
+<div class="mappa">
+  <img src="{{ url_for('static', filename=dati.mappa.file) }}"
+       width="{{ dati.mappa.larghezza }}" height="{{ dati.mappa.altezza }}"
+       alt="Percorso della sperimentazione con le fermate">
+  {% for punto in dati.mappa.capisaldi %}
+  <span class="bolla vuota"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%"
+        title="{{ punto.nome }} &middot; nessuna salita registrata">0</span>
+  {% endfor %}
+  {% for punto in dati.mappa.tecnici %}
+  <span class="bolla tecnica"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%"
+        title="{{ punto.nome }} &middot; {{ punto.quante }} salite, non di servizio">
+    {{ punto.quante }}
+  </span>
+  {% endfor %}
+  {% for punto in dati.mappa.punti %}
+  <span class="bolla"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%"
+        title="{{ punto.nome }} &middot; {{ punto.quante }} salite">
+    {{ punto.quante }}
+  </span>
+  {% endfor %}
+</div>
+<p class="minuto">
+  Il numero dentro il segno &egrave; quante persone sono salite a quella
+  fermata; in grigio le fermate dove <b>non &egrave; ancora salito nessuno</b>.
+  {% if dati.mappa.angolo %}La mappa &egrave; <b>ruotata di
+  {{ dati.mappa.angolo | round | int }} gradi</b> per raddrizzare il percorso:
+  il nord non &egrave; in alto.{% endif %}
+  Cartografia &copy; <a href="https://www.openstreetmap.org/copyright"
+  target="_blank" rel="noopener">contributori OpenStreetMap</a>, licenza ODbL.
+  L'immagine &egrave; servita da questa applicazione: aprendo la pagina non si
+  contatta alcun servizio esterno.
+</p>
+{% endif %}
+
+{% set piu_alta = dati.fermate | map(attribute='quante') | max %}
+<table class="elenco">
+  <tbody>
+    {% for fermata in dati.fermate %}
+    <tr>
+      <th style="width: 34%">{{ fermata.nome }}</th>
+      <td>
+        {% if fermata.quante %}
+        <div class="istogramma">
+          <i style="width: {{ fermata.quante / piu_alta * 100 }}%"></i>
+          <span>{{ fermata.quante }}</span>
+        </div>
+        {% else %}
+        <span class="minuto">nessuna salita registrata</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if dati.punti_tecnici %}
+<p class="minuto">
+  {% for punto in dati.punti_tecnici %}
+  All'<b>{{ punto.nome | lower }}</b> risulta{{ 'no' if punto.quante != 1 }}
+  {{ punto.quante }} salit{{ 'e' if punto.quante != 1 else 'a' }} &mdash;
+  segnat{{ 'e' if punto.quante != 1 else 'a' }} in ambra sulla mappa. Non sono utenza del servizio: l&igrave;
+  il mezzo sosta e si ricarica, e le salite registrate sono di chi ci lavora.
+  Restano fuori dai conteggi delle fermate.
+  {% endfor %}
+</p>
+{% endif %}
+
+{% if dati.salite_lontane %}
+<p class="minuto">
+  <b>{{ dati.salite_lontane | length }}</b> salite sono avvenute a pi&ugrave; di
+  cento metri da ogni fermata e non sono attribuite ad alcuna: vale la pena
+  verificare se l'elenco delle fermate &egrave; completo.
+</p>
+{% endif %}
+{% else %}
+<p class="minuto">
+  Nessuna corsa ha la posizione registrata, quindi non &egrave; possibile dire
+  dove si sale.
+</p>
+{% endif %}
+
+<h2>Gradimento</h2>
+{% if dati.voti.totale %}
+{% set voti_max = dati.voti.distribuzione | map(attribute='quante') | max %}
+<table class="elenco">
+  <tbody>
+    {% for voto in dati.voti.distribuzione %}
+    <tr>
+      <th style="width: 14%">{{ '★' * voto.stelle }}</th>
+      <td>
+        <div class="istogramma">
+          <i style="width: {{ voto.quante / voti_max * 100 }}%"></i>
+          <span>{{ voto.quante }}</span>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="minuto">
+  {{ dati.voti.totale }} valutazioni, di cui {{ dati.voti.con_commento }} con un
+  commento scritto. I commenti non sono riportati qui: sono testo libero e
+  possono contenere riferimenti a persone.
+</p>
+{% else %}
+<p class="minuto">Nessuna valutazione ancora espressa.</p>
+{% endif %}
+
+<p class="minuto" style="margin-top: 26px">
+  Dati aggiornati al {{ dati.aggiornato.strftime('%d/%m/%Y %H:%M') }} UTC.
+</p>
+
+{% endif %}
+
+<style>
+.testa-pagina {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.testa-pagina h1 { margin: 0 }
+
+.riquadri { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 22px; }
+.riquadro {
+  flex: 1 1 190px; background: #fff; border: 1px solid var(--bordo);
+  border-radius: 8px; padding: 14px 16px;
+}
+.riquadro .cifra {
+  display: block; font-size: 30px; font-weight: 600; color: var(--accento);
+  line-height: 1.1;
+}
+.riquadro .cifra small { font-size: 16px; font-weight: 500; }
+.riquadro .voce { display: block; margin-top: 4px; font-size: 13.5px; }
+.riquadro .nota { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }
+
+.grafico {
+  display: flex; align-items: flex-end; gap: 2px; height: 110px;
+  background: #fff; border: 1px solid var(--bordo); border-radius: 8px;
+  padding: 10px;
+}
+.grafico .colonna { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.grafico .colonna i {
+  display: block; width: 100%; min-height: 2px; border-radius: 2px 2px 0 0;
+  background: var(--accento);
+}
+
+.istogramma { display: flex; align-items: center; gap: 8px; }
+.istogramma i {
+  display: block; height: 12px; min-width: 2px; border-radius: 3px;
+  background: var(--accento);
+}
+.istogramma span { color: var(--tenue); font-size: 12.5px; }
+
+.mappa {
+  position: relative; max-width: 100%; margin: 14px 0 10px;
+  border: 1px solid var(--bordo); border-radius: 8px; overflow: hidden;
+  line-height: 0;
+}
+.mappa img { display: block; max-width: 100%; height: auto; }
+.mappa .bolla {
+  position: absolute; transform: translate(-50%, -50%);
+  min-width: 30px; height: 30px; padding: 0 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accento); color: #fff; border: 2px solid #fff;
+  border-radius: 15px; font-size: 13px; font-weight: 600; line-height: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+}
+.mappa .bolla.vuota { background: #8a97a8; }
+.mappa .bolla.tecnica { background: #9a6b00; }
+
+.colonne { display: flex; flex-wrap: wrap; gap: 16px; }
+.colonne > div { flex: 1 1 300px; }
+.colonne h3 { font-size: 14px; margin: 0 0 6px; }
+</style>
+{% endblock %}

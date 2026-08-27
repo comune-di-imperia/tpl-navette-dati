@@ -26,6 +26,9 @@
     {% if ha_permesso("dispositivi.gestione") %}
     <a href="{{ url_for("dispositivi_bordo") }}" {% if request.endpoint == "dispositivi_bordo" %}class="attivo"{% endif %}>Dispositivi</a>
     {% endif %}
+    {% if ha_permesso('statistiche.leggi') %}
+    <a href="{{ url_for('statistiche_sperimentazione') }}" {% if request.endpoint == 'statistiche_sperimentazione' %}class="attivo"{% endif %}>Statistiche</a>
+    {% endif %}
     {% if ha_permesso('casella.leggi') %}
     <a href="{{ url_for('casella_sorveglianza') }}" {% if request.endpoint == 'casella_sorveglianza' %}class="attivo"{% endif %}>Casella</a>
     {% endif %}
@@ -67,7 +70,7 @@
     {% if passeggeri %}
     <br>
     Manuale per i passeggeri:
-    {% set nomi = {'it': 'italiano', 'en': 'english', 'fr': 'fran&ccedil;ais', 'de': 'deutsch'} %}
+    {% set nomi = {'it': 'italiano', 'en': 'english', 'fr': 'fran&ccedil;ais', 'de': 'deutsch', 'es': 'espa&ntilde;ol'} %}
     {% for l in passeggeri %}
       <a href="{{ url_for('scarica_manuale_passeggeri', lingua=l) }}">{{ nomi[l] | safe }}</a>{% if not loop.last %} &middot; {% endif %}
     {% endfor %}

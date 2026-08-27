@@ -1,0 +1,425 @@
+{% macro blocco(titolo, voci, stretto=false) %}
+<div class="blocco">
+  <h3>{{ titolo }}</h3>
+  {% if voci %}
+  {% set piu_alta = voci | map(attribute='quante') | max %}
+  <table class="dati{% if stretto %} stretta{% endif %}">
+    <tbody>
+      {% for voce in voci %}
+      <tr>
+        <th>{{ voce.etichetta }}</th>
+        <td class="barra">
+          <span class="riga">
+            <i style="width: {{ (voce.quante / piu_alta * 92 + 8) | round(1) }}%"></i>
+          </span>
+        </td>
+        <td class="conta">{{ voce.quante }}</td>
+        <td class="quota">{{ voce.quota }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="minuto">Nessun dato.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="utf-8">
+<title>Statistiche della sperimentazione</title>
+<style>
+/* Impaginato del documento da allegare alle relazioni: nessun elemento
+   dell'interfaccia, una gerarchia sola — sezione, sottotitolo, tabella — e
+   colori usati per distinguere, non per decorare. */
+
+@page {
+  size: A4;
+  margin: 15mm 15mm 16mm 15mm;
+  @bottom-left {
+    content: "Sperimentazione trasporto pubblico a guida autonoma";
+    font-family: "DejaVu Sans", sans-serif; font-size: 7pt; color: #8a93a0;
+  }
+  @bottom-right {
+    content: "pag. " counter(page) " di " counter(pages);
+    font-family: "DejaVu Sans", sans-serif; font-size: 7pt; color: #8a93a0;
+  }
+}
+@page :first { margin-top: 14mm }
+
+* { box-sizing: border-box }
+body {
+  font-family: "DejaVu Sans", sans-serif; font-size: 9pt;
+  color: #232f3d; margin: 0; line-height: 1.45;
+}
+
+/* ---------- testata ---------- */
+.testata {
+  display: table; width: 100%; border-bottom: .5mm solid #1f5f9e;
+  padding-bottom: 3mm; margin-bottom: 5mm;
+}
+.testata .stemmi {
+  display: table-cell; width: 30mm; vertical-align: middle; white-space: nowrap;
+}
+.testata .stemmi img.imperia { height: 12mm; vertical-align: middle }
+.testata .stemmi img.kore { height: 8mm; vertical-align: middle; margin-left: 2.5mm }
+.testata .titoli { display: table-cell; vertical-align: middle; padding-left: 5mm }
+.occhiello {
+  font-size: 7.5pt; letter-spacing: 2.4pt; text-transform: uppercase;
+  color: #6b7789;
+}
+h1 { font-size: 15.5pt; color: #17408b; margin: 1mm 0 0;
+     letter-spacing: -.3pt; line-height: 1.15 }
+.sottotitolo { font-size: 9.5pt; color: #4a5768; margin-top: .8mm }
+
+/* ---------- sezioni ---------- */
+h2 {
+  font-size: 11.5pt; color: #17408b; margin: 7mm 0 2.5mm;
+  page-break-after: avoid;
+}
+h2 span.numero {
+  display: inline-block; width: 5.5mm; height: 5.5mm; border-radius: 50%;
+  background: #17408b; color: #fff; font-size: 8pt; text-align: center;
+  line-height: 5.5mm; margin-right: 2mm; vertical-align: 1mm;
+}
+/* La sezione delle fermate apre una pagina sua: mappa e tabella vanno
+   guardate insieme, e spezzarle a meta' foglio le rende inservibili. */
+h2.pagina-nuova { page-break-before: always; margin-top: 0 }
+
+h3 {
+  font-size: 8.5pt; color: #4a5768; margin: 0 0 1.5mm;
+  text-transform: uppercase; letter-spacing: .8pt; page-break-after: avoid;
+}
+
+/* ---------- riquadri di sintesi ---------- */
+.sintesi { display: table; width: 100%; table-layout: fixed; margin: 0 0 2mm }
+.sintesi .voce { display: table-cell; padding-right: 3mm }
+.sintesi .voce:last-child { padding-right: 0 }
+.sintesi .dentro {
+  border: .3mm solid #cfdaea; border-top: 1mm solid #1f5f9e;
+  border-radius: 1.5mm; padding: 3mm 3mm 2.5mm; background: #fbfcfe;
+}
+.sintesi .cifra {
+  display: block; font-size: 20pt; font-weight: bold; color: #17408b;
+  line-height: 1; letter-spacing: -.5pt;
+}
+.sintesi .cifra small { font-size: 10pt; font-weight: normal }
+.sintesi .che { display: block; font-size: 8.5pt; margin-top: 1.4mm }
+.sintesi .nota { display: block; font-size: 7pt; color: #7c8899; margin-top: .4mm }
+
+/* ---------- tabelle ---------- */
+table.dati { width: 100%; border-collapse: collapse }
+table.dati th, table.dati td {
+  text-align: left; padding: 1.3mm 1.5mm; vertical-align: middle;
+  font-weight: normal;
+}
+table.dati th { font-size: 8.5pt; color: #232f3d; width: 38% }
+table.dati.stretta th { width: 46% }
+table.dati tbody tr:nth-child(even) { background: #f6f8fb }
+table.dati td.barra { width: 34% }
+table.dati td.barra .riga {
+  display: block; background: #e7edf5; border-radius: 1mm; height: 2.8mm;
+}
+table.dati td.barra i {
+  display: block; height: 2.8mm; border-radius: 1mm; background: #2b6cb0;
+}
+table.dati td.conta {
+  text-align: right; width: 12%; font-weight: bold; font-size: 8.5pt;
+}
+table.dati td.quota {
+  text-align: right; width: 16%; color: #7c8899; font-size: 7.5pt;
+}
+
+table.voci { width: 100%; border-collapse: collapse }
+table.voci th, table.voci td { padding: 1.5mm 2mm; text-align: left }
+table.voci th { font-weight: normal; font-size: 8.5pt; width: 62% }
+table.voci td { text-align: right; font-weight: bold; font-size: 9pt }
+table.voci tbody tr { border-bottom: .2mm solid #e7edf5 }
+table.voci tbody tr:last-child { border-bottom: none }
+
+/* ---------- due colonne ---------- */
+.due { display: table; width: 100%; table-layout: fixed; margin-bottom: 2mm }
+.due > .blocco { display: table-cell; width: 50%; vertical-align: top;
+                 padding-right: 7mm }
+.due > .blocco:last-child { padding-right: 0 }
+.blocco { margin-bottom: 4mm }
+
+/* ---------- mappa ---------- */
+.mappa { position: relative; margin: 2mm 0 1.5mm }
+.mappa img {
+  width: 100%; display: block; border: .3mm solid #cfdaea; border-radius: 1mm;
+}
+.mappa .bolla {
+  position: absolute; transform: translate(-50%, -50%);
+  background: #2b6cb0; color: #fff; border: .35mm solid #fff;
+  border-radius: 50%; width: 5.4mm; height: 5.4mm; font-size: 7pt;
+  font-weight: bold; text-align: center; line-height: 4.7mm;
+}
+.mappa .bolla.vuota { background: #98a4b4 }
+.mappa .bolla.tecnica { background: #b07d17 }
+
+.legenda { font-size: 7.5pt; color: #6b7789; margin: 1mm 0 3mm }
+.legenda .segno {
+  display: inline-block; width: 2.6mm; height: 2.6mm; border-radius: 50%;
+  vertical-align: -.2mm; margin-right: 1mm;
+}
+.legenda .segno.piena { background: #2b6cb0 }
+.legenda .segno.vuota { background: #98a4b4 }
+.legenda .segno.tecnica { background: #b07d17 }
+.legenda span + span { margin-left: 5mm }
+
+/* ---------- note ---------- */
+.minuto { color: #6b7789; font-size: 8pt; text-align: justify; margin: 1.5mm 0 }
+.avvertenza {
+  background: #f4f7fb; border-left: 1.2mm solid #2b6cb0;
+  padding: 2.5mm 3mm; margin: 3mm 0; font-size: 8pt; color: #3d4a5c;
+  page-break-inside: avoid;
+}
+.piede {
+  margin-top: 7mm; border-top: .3mm solid #cfdaea; padding-top: 2.5mm;
+  font-size: 7pt; color: #7c8899; text-align: justify;
+}
+</style>
+</head>
+<body>
+
+<div class="testata">
+  <div class="stemmi">
+    <img class="imperia" src="imperia.png" alt="">
+    <img class="kore" src="kore.png" alt="">
+  </div>
+  <div class="titoli">
+    <div class="occhiello">Comune di Imperia &middot; Sperimentazione</div>
+    <h1>Statistiche del servizio a guida autonoma</h1>
+    <div class="sottotitolo">
+      Dati al {{ dati.aggiornato.strftime('%d/%m/%Y, ore %H:%M') }} UTC
+      &middot; decreto PCM/DTD n. 94/2026
+    </div>
+  </div>
+</div>
+
+<div class="sintesi">
+  <div class="voce"><div class="dentro">
+    <span class="cifra">{{ dati.registrazioni.totale }}</span>
+    <span class="che">persone registrate</span>
+    <span class="nota">{{ dati.registrazioni.con_consenso }} con consenso prestato</span>
+  </div></div>
+  <div class="voce"><div class="dentro">
+    <span class="cifra">{{ dati.corse.totale }}</span>
+    <span class="che">corse in servizio</span>
+    <span class="nota">in {{ dati.corse.giorni_di_servizio }} giorni di esercizio</span>
+  </div></div>
+  <div class="voce"><div class="dentro">
+    <span class="cifra">{{ dati.corse.durata_tipica_min }}<small> min</small></span>
+    <span class="che">durata tipica</span>
+    <span class="nota">valore mediano</span>
+  </div></div>
+  <div class="voce"><div class="dentro">
+    <span class="cifra">{{ dati.voti.media if dati.voti.media else '—' }}</span>
+    <span class="che">voto medio</span>
+    <span class="nota">su {{ dati.voti.totale }} valutazioni</span>
+  </div></div>
+</div>
+
+<p class="minuto">
+  I dati provengono dall'applicazione dei passeggeri in <b>forma anonima</b>:
+  fascia d'et&agrave;, sesso, rapporto con la citt&agrave;, condizione
+  professionale, orari e valutazioni. Nome, cognome e indirizzo di posta
+  elettronica non sono accessibili, e la data di nascita non viene conservata.
+  Le corse dei mezzi di collaudo sono escluse da ogni conteggio.
+</p>
+
+<h2><span class="numero">1</span>Adesione alla sperimentazione</h2>
+<div class="due">
+  <div class="blocco">
+    <h3>Registrazioni</h3>
+    <table class="voci">
+      <tbody>
+        <tr><th>Persone registrate</th><td>{{ dati.registrazioni.totale }}</td></tr>
+        <tr><th>Con indirizzo verificato</th><td>{{ dati.registrazioni.verificate }}</td></tr>
+        <tr><th>Con consenso prestato</th><td>{{ dati.registrazioni.con_consenso }}</td></tr>
+        <tr><th>Consenso revocato</th><td>{{ dati.registrazioni.consenso_revocato }}</td></tr>
+        <tr><th>Account cancellati</th><td>{{ dati.registrazioni.cancellate }}</td></tr>
+        <tr>
+          <th>Accesso con Google o Apple</th>
+          <td>{{ dati.registrazioni.con_provider }}</td>
+        </tr>
+        <tr>
+          <th>Accesso con indirizzo e password</th>
+          <td>{{ dati.registrazioni.totale - dati.registrazioni.con_provider }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {{ blocco("Lingua del consenso", dati.per_lingua, true) }}
+</div>
+
+<div class="due">
+  {{ blocco("Fascia d'età dei registrati", dati.anagrafica.fascia_eta, true) }}
+  {{ blocco("Rapporto con la città", dati.anagrafica.categoria, true) }}
+</div>
+{{ blocco("Condizione professionale dei registrati", dati.anagrafica.professione) }}
+
+<h2><span class="numero">2</span>Utilizzo del servizio</h2>
+<div class="due">
+  {{ blocco("Corse per mezzo", dati.per_mezzo, true) }}
+  {{ blocco("Conclusione della corsa", dati.per_chiusura, true) }}
+</div>
+
+{% if dati.per_ora %}
+{% set piu_alta = dati.per_ora | map(attribute='quante') | max %}
+<div class="blocco">
+  <h3>Distribuzione oraria delle salite</h3>
+  <table class="dati">
+    <tbody>
+      {% for fascia in dati.per_ora %}
+      <tr>
+        <th>dalle {{ '%02d' | format(fascia.ora) }}:00 alle {{ '%02d' | format(fascia.ora + 1) }}:00</th>
+        <td class="barra">
+          <span class="riga">
+            <i style="width: {{ (fascia.quante / piu_alta * 92 + 8) | round(1) }}%"></i>
+          </span>
+        </td>
+        <td class="conta">{{ fascia.quante }}</td>
+        <td class="quota">{{ (fascia.quante / dati.corse.totale * 100) | round(1) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if dati.corse.ancora_aperte %}
+<div class="avvertenza">
+  <b>{{ dati.corse.ancora_aperte }} corse su {{ dati.corse.totale }} risultano
+  ancora aperte</b>: nessuno le ha chiuse con una valutazione e non sono state
+  sostituite da una nuova salita. &Egrave; la ragione per cui la durata &egrave;
+  riportata come valore mediano e non come media aritmetica, che ne
+  risulterebbe moltiplicata per sei.
+</div>
+{% endif %}
+
+<h2><span class="numero">3</span>Caratteristiche di chi viaggia</h2>
+<p class="minuto">
+  Le caratteristiche di chi ha effettivamente viaggiato non coincidono con
+  quelle di chi si &egrave; registrato: una parte degli iscritti non &egrave;
+  ancora salita, altri sono saliti pi&ugrave; volte.
+</p>
+<div class="due">
+  {{ blocco("Fascia d'età", dati.fascia_eta, true) }}
+  {{ blocco("Sesso", dati.sesso, true) }}
+</div>
+<div class="due">
+  {{ blocco("Rapporto con la città", dati.categoria, true) }}
+  {{ blocco("Condizione professionale", dati.professione, true) }}
+</div>
+
+<h2 class="pagina-nuova"><span class="numero">4</span>Fermate e punti di salita</h2>
+{% if dati.mappa %}
+<div class="mappa">
+  <img src="{{ dati.mappa.file }}" alt="Percorso con le fermate">
+  {% for punto in dati.mappa.capisaldi %}
+  <span class="bolla vuota"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%">0</span>
+  {% endfor %}
+  {% for punto in dati.mappa.tecnici %}
+  <span class="bolla tecnica"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%">{{ punto.quante }}</span>
+  {% endfor %}
+  {% for punto in dati.mappa.punti %}
+  <span class="bolla"
+        style="left: {{ (punto.x / dati.mappa.larghezza * 100) | round(3) }}%;
+               top: {{ (punto.y / dati.mappa.altezza * 100) | round(3) }}%">{{ punto.quante }}</span>
+  {% endfor %}
+</div>
+<div class="legenda">
+  <span><i class="segno piena"></i>fermata con salite</span>
+  <span><i class="segno vuota"></i>fermata senza salite</span>
+  {% if dati.punti_tecnici %}<span><i class="segno tecnica"></i>hub di sosta e ricarica</span>{% endif %}
+  <span style="float: right">
+    Mappa ruotata di {{ dati.mappa.angolo | round | int }}&deg;: il nord non
+    &egrave; in alto. Cartografia &copy; OpenStreetMap, ODbL
+  </span>
+</div>
+{% endif %}
+
+{% if dati.fermate %}
+{% set piu_alta = dati.fermate | map(attribute='quante') | max %}
+<table class="dati">
+  <tbody>
+    {% for fermata in dati.fermate %}
+    <tr>
+      <th>{{ fermata.nome }}</th>
+      <td class="barra">
+        <span class="riga">
+          {% if fermata.quante %}
+          <i style="width: {{ (fermata.quante / piu_alta * 92 + 8) | round(1) }}%"></i>
+          {% endif %}
+        </span>
+      </td>
+      <td class="conta">{{ fermata.quante }}</td>
+      <td class="quota">
+        {% if fermata.quante %}
+        {{ (fermata.quante / dati.corse.totale * 100) | round(1) }}%
+        {% else %}&mdash;{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="minuto">
+  L'applicazione di bordo non registra quale fermata sia stata inquadrata:
+  della salita resta la sola posizione del mezzo, e ogni salita &egrave;
+  attribuita alla fermata pi&ugrave; vicina entro cento metri. La soglia tiene
+  conto del fatto che il veicolo, quando l'operatore inquadra il codice,
+  pu&ograve; avere gi&agrave; accostato o essere ripartito.
+  {% for punto in dati.punti_tecnici %}
+  All'{{ punto.nome | lower }} risulta{{ 'no' if punto.quante != 1 }}
+  {{ punto.quante }} salit{{ 'e' if punto.quante != 1 else 'a' }}, escluse dai
+  conteggi delle fermate: non sono utenza del servizio.
+  {% endfor %}
+</p>
+{% endif %}
+
+<h2><span class="numero">5</span>Gradimento</h2>
+{% if dati.voti.totale %}
+{% set voti_max = dati.voti.distribuzione | map(attribute='quante') | max %}
+<table class="dati">
+  <tbody>
+    {% for voto in dati.voti.distribuzione %}
+    <tr>
+      <th>{{ '★' * voto.stelle }}{{ '☆' * (5 - voto.stelle) }}</th>
+      <td class="barra">
+        <span class="riga">
+          <i style="width: {{ (voto.quante / voti_max * 92 + 8) | round(1) }}%"></i>
+        </span>
+      </td>
+      <td class="conta">{{ voto.quante }}</td>
+      <td class="quota">{{ (voto.quante / dati.voti.totale * 100) | round(1) }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="minuto">
+  {{ dati.voti.totale }} valutazioni espresse su {{ dati.corse.totale }} corse,
+  di cui {{ dati.voti.con_commento }} accompagnate da un commento scritto. I
+  commenti non sono riportati in questo documento: sono testo libero e possono
+  contenere riferimenti a persone.
+</p>
+{% else %}
+<p class="minuto">Nessuna valutazione ancora espressa.</p>
+{% endif %}
+
+<div class="piede">
+  Documento generato automaticamente dall'applicazione di gestione dei dati
+  della sperimentazione, <b>tpl.comune.imperia.it</b>, in esecuzione presso il
+  Comune di Imperia. I dati provengono dall'applicazione dei passeggeri in
+  forma anonima e non permettono di risalire ad alcuna persona.
+  Progetto promosso dal Comune di Imperia in collaborazione con
+  l'Universit&agrave; degli Studi di Enna Kore.
+</div>
+
+</body>
+</html>
