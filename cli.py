@@ -5,6 +5,8 @@
     python3 -m scripts.tpl_navette.cli utenti
     python3 -m scripts.tpl_navette.cli registro --limite 50
     python3 -m scripts.tpl_navette.cli elabora --file archivio.zip
+    python3 -m scripts.tpl_navette.cli rapporto-invia --cadenza settimanale
+    python3 -m scripts.tpl_navette.cli sintesi-telegram --prova
 
 La password non si passa come argomento: finirebbe nella cronologia della shell
 e nella lista dei processi. Viene chiesta a video o letta da stdin con --stdin.
@@ -66,6 +68,22 @@ def main(argv=None) -> int:
     c = sub.add_parser("registro", help="mostra il registro attivita'")
     c.add_argument("--limite", type=int, default=50)
     c.add_argument("--utente", default="")
+
+    c = sub.add_parser(
+        "rapporto-invia", help="spedisce il rapporto periodico ai destinatari"
+    )
+    c.add_argument("--cadenza", choices=("settimanale", "mensile"), default="settimanale")
+    c.add_argument(
+        "--a", default="", help="un solo indirizzo, per provare senza scrivere a tutti"
+    )
+
+    c = sub.add_parser(
+        "sintesi-telegram", help="manda su Telegram la sintesi del giorno prima"
+    )
+    c.add_argument("--giorno", default="", help="AAAA-MM-GG, per rifare un giorno")
+    c.add_argument(
+        "--prova", action="store_true", help="stampa il messaggio senza spedirlo"
+    )
 
     c = sub.add_parser("elabora", help="elabora un archivio senza passare dal web")
     c.add_argument("--file", required=True)
@@ -136,6 +154,26 @@ def main(argv=None) -> int:
                 f"{v['quando'][:19]}  {v['utente']:<14} {v['azione']:<14} "
                 f"{v['esito']:<10} {v['dettaglio']}"
             )
+
+    elif a.comando == "rapporto-invia":
+        from . import rapporto_periodico
+
+        quanti = rapporto_periodico.invia(a.cadenza, [a.a] if a.a else None)
+        print(
+            f"rapporto {a.cadenza}: inviato a {quanti} destinatari"
+            if quanti
+            else f"rapporto {a.cadenza}: nessun destinatario, non spedito"
+        )
+
+    elif a.comando == "sintesi-telegram":
+        from datetime import date
+
+        from . import sintesi_telegram
+
+        giorno = date.fromisoformat(a.giorno) if a.giorno else None
+        quanti = sintesi_telegram.esegui(giorno, prova=a.prova)
+        if not a.prova:
+            print(f"sintesi giornaliera: inviata a {quanti} destinatari")
 
     elif a.comando == "elabora":
         from . import pipeline

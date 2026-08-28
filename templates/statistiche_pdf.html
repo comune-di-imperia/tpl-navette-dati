@@ -24,6 +24,7 @@
   {% endif %}
 </div>
 {% endmacro %}
+{% set scarto = 1 if dati.confronto else 0 %}
 <!DOCTYPE html>
 <html lang="it">
 <head><meta charset="utf-8">
@@ -90,6 +91,27 @@ h3 {
   font-size: 8.5pt; color: #4a5768; margin: 0 0 1.5mm;
   text-transform: uppercase; letter-spacing: .8pt; page-break-after: avoid;
 }
+
+/* ---------- scostamento fra due periodi ---------- */
+table.andamento { width: 100%; border-collapse: collapse; margin-bottom: 2mm }
+table.andamento th, table.andamento td {
+  border-bottom: .2mm solid #e3e9f1; padding: 1.4mm 2mm; text-align: right;
+}
+table.andamento thead th {
+  font-size: 7.5pt; text-transform: uppercase; letter-spacing: .6pt;
+  color: #6b7789; font-weight: normal; border-bottom: .4mm solid #cfdaea;
+}
+table.andamento th.voce, table.andamento thead th.voce {
+  text-align: left; font-weight: normal; color: #232f3d;
+}
+table.andamento td.variazione {
+  font-weight: bold; width: 34mm; white-space: nowrap;
+}
+/* Il verso della variazione si legge dal segno, non dal colore: il documento
+   viene stampato anche in bianco e nero e allegato alle relazioni. */
+td.variazione.su { color: #1b7f4b }
+td.variazione.giu { color: #a8322c }
+td.variazione.pari { color: #8a93a0; font-weight: normal }
 
 /* ---------- riquadri di sintesi ---------- */
 .sintesi { display: table; width: 100%; table-layout: fixed; margin: 0 0 2mm }
@@ -192,8 +214,10 @@ table.voci tbody tr:last-child { border-bottom: none }
     <div class="occhiello">Comune di Imperia &middot; Sperimentazione</div>
     <h1>Statistiche del servizio a guida autonoma</h1>
     <div class="sottotitolo">
-      Dati al {{ dati.aggiornato.strftime('%d/%m/%Y, ore %H:%M') }} UTC
-      &middot; decreto PCM/DTD n. 94/2026
+      {% if dati.periodo %}Periodo dal {{ dati.periodo.da.strftime('%d/%m/%Y') }}
+      al {{ dati.periodo.a.strftime('%d/%m/%Y') }}
+      {% else %}Dati al {{ dati.aggiornato.strftime('%d/%m/%Y, ore %H:%M') }} UTC
+      {% endif %}&middot; decreto PCM/DTD n. 94/2026
     </div>
   </div>
 </div>
@@ -215,7 +239,7 @@ table.voci tbody tr:last-child { border-bottom: none }
     <span class="nota">valore mediano</span>
   </div></div>
   <div class="voce"><div class="dentro">
-    <span class="cifra">{{ dati.voti.media if dati.voti.media else '—' }}</span>
+    <span class="cifra">{{ dati.voti.media if dati.voti.media else '—' }}{% if dati.voti.media %}<small> / 5</small>{% endif %}</span>
     <span class="che">voto medio</span>
     <span class="nota">su {{ dati.voti.totale }} valutazioni</span>
   </div></div>
@@ -229,7 +253,72 @@ table.voci tbody tr:last-child { border-bottom: none }
   Le corse dei mezzi di collaudo sono escluse da ogni conteggio.
 </p>
 
-<h2><span class="numero">1</span>Adesione alla sperimentazione</h2>
+{% if dati.confronto %}
+<h2><span class="numero">1</span>Andamento rispetto al periodo precedente</h2>
+<p class="minuto">
+  I valori di questo periodo affiancati a quelli del periodo di pari durata
+  immediatamente precedente, dal
+  {{ dati.confronto.da.strftime('%d/%m/%Y') }} al
+  {{ dati.confronto.a.strftime('%d/%m/%Y') }}. Dove il periodo precedente
+  &egrave; a zero la variazione percentuale non &egrave; calcolabile.
+</p>
+<table class="andamento">
+  <thead>
+    <tr>
+      <th class="voce">Grandezza</th>
+      <th>Periodo precedente</th>
+      <th>Questo periodo</th>
+      <th>Variazione</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for voce in dati.confronto.voci %}
+    <tr>
+      <th class="voce">{{ voce.etichetta }}</th>
+      <td>{{ voce.prima }}</td>
+      <td>{{ voce.adesso }}</td>
+      <td class="variazione {{ voce.verso }}">
+        {% if voce.verso == 'pari' %}invariato
+        {% elif voce.percentuale is none %}{{ '%+g' % voce.differenza }}
+        {% else %}{{ '%+g' % voce.differenza }} ({{ '%+g' % voce.percentuale }}%)
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if dati.confronto.fermate %}
+<h3>Salite per fermata</h3>
+<table class="andamento">
+  <thead>
+    <tr>
+      <th class="voce">Fermata</th>
+      <th>Periodo precedente</th>
+      <th>Questo periodo</th>
+      <th>Variazione</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for voce in dati.confronto.fermate %}
+    <tr>
+      <th class="voce">{{ voce.nome }}</th>
+      <td>{{ voce.prima }}</td>
+      <td>{{ voce.adesso }}</td>
+      <td class="variazione {{ voce.verso }}">
+        {% if voce.verso == 'pari' %}invariato
+        {% elif voce.percentuale is none %}{{ '%+g' % voce.differenza }}
+        {% else %}{{ '%+g' % voce.differenza }} ({{ '%+g' % voce.percentuale }}%)
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+<h2><span class="numero">{{ 1 + scarto }}</span>Adesione alla sperimentazione</h2>
 <div class="due">
   <div class="blocco">
     <h3>Registrazioni</h3>
@@ -260,7 +349,7 @@ table.voci tbody tr:last-child { border-bottom: none }
 </div>
 {{ blocco("Condizione professionale dei registrati", dati.anagrafica.professione) }}
 
-<h2><span class="numero">2</span>Utilizzo del servizio</h2>
+<h2><span class="numero">{{ 2 + scarto }}</span>Utilizzo del servizio</h2>
 <div class="due">
   {{ blocco("Corse per mezzo", dati.per_mezzo, true) }}
   {{ blocco("Conclusione della corsa", dati.per_chiusura, true) }}
@@ -299,7 +388,7 @@ table.voci tbody tr:last-child { border-bottom: none }
 </div>
 {% endif %}
 
-<h2><span class="numero">3</span>Caratteristiche di chi viaggia</h2>
+<h2><span class="numero">{{ 3 + scarto }}</span>Caratteristiche di chi viaggia</h2>
 <p class="minuto">
   Le caratteristiche di chi ha effettivamente viaggiato non coincidono con
   quelle di chi si &egrave; registrato: una parte degli iscritti non &egrave;
@@ -314,7 +403,7 @@ table.voci tbody tr:last-child { border-bottom: none }
   {{ blocco("Condizione professionale", dati.professione, true) }}
 </div>
 
-<h2 class="pagina-nuova"><span class="numero">4</span>Fermate e punti di salita</h2>
+<h2 class="pagina-nuova"><span class="numero">{{ 4 + scarto }}</span>Fermate e punti di salita</h2>
 {% if dati.mappa %}
 <div class="mappa">
   <img src="{{ dati.mappa.file }}" alt="Percorso con le fermate">
@@ -383,7 +472,7 @@ table.voci tbody tr:last-child { border-bottom: none }
 </p>
 {% endif %}
 
-<h2><span class="numero">5</span>Gradimento</h2>
+<h2><span class="numero">{{ 5 + scarto }}</span>Gradimento</h2>
 {% if dati.voti.totale %}
 {% set voti_max = dati.voti.distribuzione | map(attribute='quante') | max %}
 <table class="dati">

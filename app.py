@@ -54,6 +54,7 @@ from . import (
     permessi,
     pipeline,
     posta,
+    rapporti,
     statistiche,
 )
 
@@ -251,6 +252,7 @@ app.jinja_env.globals["accesso_libero"] = accesso_libero
 # il template NASCONDE cio' che l'utente non puo' fare; a impedirlo davvero e'
 # il decoratore sulla rotta, non questo
 app.jinja_env.globals["ha_permesso"] = _ha_permesso
+app.jinja_env.globals["informative_passeggeri"] = lambda: informative_disponibili()
 app.jinja_env.globals["manuali_passeggeri"] = lambda: manuali_passeggeri_disponibili()
 app.jinja_env.globals["guida_bordo"] = lambda: guida_bordo_disponibile()
 app.jinja_env.globals["locandina"] = lambda: locandina_disponibile()
@@ -700,6 +702,18 @@ MANUALI_PASSEGGERI = {
     "es": "Manuale Utente App Bus a Guida Autonoma - ES.pdf",
 }
 
+# Le due informative che il passeggero accetta prima di salire: i rischi e le
+# modalita' della sperimentazione, ai sensi del D.M. 70/2018, e il trattamento
+# dei dati personali. Stanno accanto ai manuali perche' chi le cerca dopo la
+# registrazione le trova dove si aspetta di trovarle.
+INFORMATIVE_PASSEGGERI = {
+    "it": "Informative Passeggeri Bus a Guida Autonoma.pdf",
+    "en": "Informative Passeggeri Bus a Guida Autonoma - EN.pdf",
+    "fr": "Informative Passeggeri Bus a Guida Autonoma - FR.pdf",
+    "de": "Informative Passeggeri Bus a Guida Autonoma - DE.pdf",
+    "es": "Informative Passeggeri Bus a Guida Autonoma - ES.pdf",
+}
+
 # Foglio di una pagina per chi sta a bordo: come registrare le salite e come
 # tornare alla pagina di scansione se l'icona sparisce.
 GUIDA_BORDO = "Guida Personale di Bordo - Registrare le salite.pdf"
@@ -732,6 +746,32 @@ def scarica_manuale_passeggeri(lingua: str):
         mimetype="application/pdf",
         as_attachment=False,
         download_name=f"manuale-passeggeri-{lingua}.pdf",
+    )
+
+
+def informative_disponibili() -> list:
+    """Lingue per cui l'informativa esiste davvero."""
+    cartella = cartella_manuali()
+    return [
+        l for l, nome in INFORMATIVE_PASSEGGERI.items()
+        if (cartella / nome).exists()
+    ]
+
+
+@app.route("/informativa/passeggeri/<lingua>.pdf")
+def scarica_informativa_passeggeri(lingua: str):
+    """Informative per i passeggeri. Pubbliche, come i manuali."""
+    nome = INFORMATIVE_PASSEGGERI.get(lingua)
+    if not nome:
+        abort(404)
+    percorso = cartella_manuali() / nome
+    if not percorso.exists():
+        abort(404)
+    return send_file(
+        percorso,
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"informative-passeggeri-{lingua}.pdf",
     )
 
 
@@ -901,12 +941,57 @@ def statistiche_sperimentazione():
     non deve somigliare a un guasto qui.
     """
     try:
-        return render_template(
-            "statistiche.html", dati=statistiche.raccogli(), errore=None)
+        dati = statistiche.raccogli()
+        errore = None
     except statistiche.DatiNonDisponibili as guasto:
         logger.warning(
-            "statistiche non disponibili", extra={"context": {"causa": str(guasto)}})
-        return render_template("statistiche.html", dati=None, errore=str(guasto))
+            "statistiche non disponibili",
+            extra={"context": {"causa": str(guasto)}})
+        dati, errore = None, str(guasto)
+    return render_template(
+        "statistiche.html", dati=dati, errore=errore,
+        destinatari=rapporti.leggi_destinatari(), cadenze=rapporti.CADENZE)
+
+
+@app.route("/statistiche/destinatari", methods=["POST"])
+@richiede_permesso(permessi.LEGGE_STATISTICHE)
+def statistiche_destinatari():
+    """Aggiunge, modifica o rimuove chi riceve i rapporti periodici."""
+    _verifica_gettone()
+    azione = (request.form.get("azione") or "").strip()
+    indirizzo = (request.form.get("indirizzo") or "").strip()
+    cadenze = request.form.getlist("cadenze")
+    nota = (request.form.get("nota") or "").strip()
+
+    try:
+        if azione == "aggiungi":
+            esito = rapporti.aggiungi(indirizzo, cadenze, nota)
+        elif azione == "modifica":
+            esito = rapporti.modifica(indirizzo, cadenze, nota)
+        elif azione == "elimina":
+            esito = rapporti.elimina(indirizzo)
+        else:
+            raise ValueError("Azione non riconosciuta.")
+    except ValueError as errore:
+        flash(str(errore), "attenzione")
+        db.registra(
+            "rapporti.destinatari",
+            utente=session.get("utente", ""),
+            esito="rifiutato",
+            dettaglio=f"{azione}: {errore}",
+            indirizzo_ip=_ip(),
+        )
+    else:
+        flash(esito, "esito")
+        db.registra(
+            "rapporti.destinatari",
+            utente=session.get("utente", ""),
+            esito="eseguito",
+            dettaglio=f"{azione}: {indirizzo}",
+            indirizzo_ip=_ip(),
+        )
+
+    return redirect(url_for("statistiche_sperimentazione"))
 
 
 @app.route("/statistiche.pdf")

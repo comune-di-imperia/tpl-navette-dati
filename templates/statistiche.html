@@ -71,7 +71,7 @@
     <span class="nota">valore mediano, sulle corse concluse</span>
   </div>
   <div class="riquadro">
-    <span class="cifra">{{ dati.voti.media if dati.voti.media else '&mdash;' | safe }}</span>
+    <span class="cifra">{{ dati.voti.media if dati.voti.media else '&mdash;' | safe }}{% if dati.voti.media %}<small> / 5</small>{% endif %}</span>
     <span class="voce">voto medio</span>
     <span class="nota">{{ dati.voti.totale }} valutazioni su {{ dati.corse.totale }} corse</span>
   </div>
@@ -313,6 +313,69 @@
 <p class="minuto">Nessuna valutazione ancora espressa.</p>
 {% endif %}
 
+<h2>Rapporti periodici</h2>
+<p class="minuto">
+  Chi &egrave; in questo elenco riceve per posta il documento con i numeri del
+  periodo: il <b>luned&igrave; mattina</b> quello della settimana conclusa, il
+  <b>primo del mese</b> quello del mese concluso, entrambi alle sei. Ogni
+  destinatario sceglie quali vuole.
+</p>
+
+{% if destinatari.email %}
+<table class="elenco">
+  <thead>
+    <tr><th>Indirizzo</th><th>Riceve</th><th>Nota</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for voce in destinatari.email %}
+    <tr>
+      <form method="post" action="{{ url_for('statistiche_destinatari') }}">
+        <input type="hidden" name="csrf" value="{{ gettone() }}">
+        <input type="hidden" name="indirizzo" value="{{ voce.indirizzo }}">
+        <td>{{ voce.indirizzo }}</td>
+        <td>
+          {% for chiave, descrizione in cadenze.items() %}
+          <label class="scelta">
+            <input type="checkbox" name="cadenze" value="{{ chiave }}"
+                   {% if chiave in voce.cadenze %}checked{% endif %}>
+            {{ chiave }}
+          </label>
+          {% endfor %}
+        </td>
+        <td><input type="text" name="nota" value="{{ voce.nota }}" maxlength="120"></td>
+        <td class="azioni">
+          <button type="submit" name="azione" value="modifica">Salva</button>
+          <button type="submit" name="azione" value="elimina" class="pericolo"
+                  onclick="return confirm('Togliere {{ voce.indirizzo }} dai rapporti?')">Togli</button>
+        </td>
+      </form>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="minuto">
+  Nessun destinatario configurato: al momento i rapporti non vengono inviati a
+  nessuno.
+</p>
+{% endif %}
+
+<form method="post" action="{{ url_for('statistiche_destinatari') }}"
+      class="aggiungi">
+  <input type="hidden" name="csrf" value="{{ gettone() }}">
+  <input type="email" name="indirizzo" placeholder="nome.cognome@comune.imperia.it"
+         required maxlength="200">
+  {% for chiave, descrizione in cadenze.items() %}
+  <label class="scelta" title="{{ descrizione }}">
+    <input type="checkbox" name="cadenze" value="{{ chiave }}"
+           {% if chiave == 'settimanale' %}checked{% endif %}>
+    {{ chiave }}
+  </label>
+  {% endfor %}
+  <input type="text" name="nota" placeholder="nota (facoltativa)" maxlength="120">
+  <button type="submit" name="azione" value="aggiungi">Aggiungi</button>
+</form>
+
 <p class="minuto" style="margin-top: 26px">
   Dati aggiornati al {{ dati.aggiornato.strftime('%d/%m/%Y %H:%M') }} UTC.
 </p>
@@ -376,6 +439,15 @@
 
 .colonne { display: flex; flex-wrap: wrap; gap: 16px; }
 .colonne > div { flex: 1 1 300px; }
+
+.scelta { margin-right: 12px; font-size: 12.5px; white-space: nowrap; }
+.aggiungi {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin: 12px 0 4px;
+}
+.aggiungi input[type=email] { flex: 1 1 260px; }
+.aggiungi input[type=text] { flex: 1 1 180px; }
+td.azioni { white-space: nowrap; }
 .colonne h3 { font-size: 14px; margin: 0 0 6px; }
 </style>
 {% endblock %}

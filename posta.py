@@ -7,7 +7,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 MITTENTE = "TPL Navette Imperia"
 
@@ -35,8 +35,17 @@ def invia(
     oggetto: str,
     corpo: str,
     allegati: Optional[List[Path]] = None,
+    html: Optional[str] = None,
+    immagini: Optional[Dict[str, Path]] = None,
 ) -> None:
-    """Porta 587 con STARTTLS: la 25 e' bloccata in uscita."""
+    """Porta 587 con STARTTLS: la 25 e' bloccata in uscita.
+
+    Con ``html`` il messaggio parte in due versioni: chi legge in testo
+    semplice vede ``corpo``, gli altri l'impaginato. Le ``immagini`` sono
+    incorporate e richiamate nell'HTML come ``cid:<chiave>``: allegarle e'
+    l'unico modo perche' si vedano, dato che il sito e' ad accesso riservato
+    e un'immagine remota resterebbe un riquadro vuoto.
+    """
     if not configurata():
         raise PostaNonConfigurata("SMTP_HOST, SMTP_USER e SMTP_PASS non sono impostati")
 
@@ -45,6 +54,19 @@ def invia(
     msg["To"] = ", ".join(destinatari)
     msg["Subject"] = oggetto
     msg.set_content(corpo)
+
+    if html:
+        msg.add_alternative(html, subtype="html")
+        parte_html = msg.get_payload()[-1]
+        for chiave, percorso in (immagini or {}).items():
+            p = Path(percorso)
+            parte_html.add_related(
+                p.read_bytes(),
+                maintype="image",
+                subtype=p.suffix.lstrip(".").lower(),
+                cid=f"<{chiave}>",
+                filename=p.name,
+            )
 
     for percorso in allegati or []:
         p = Path(percorso)

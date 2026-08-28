@@ -66,13 +66,21 @@
     Manuale di questa applicazione:
     <a href="{{ url_for('scarica_manuale', lingua='it') }}">italiano</a> &middot;
     <a href="{{ url_for('scarica_manuale', lingua='en') }}">english</a>
+    {% set nomi = {'it': 'italiano', 'en': 'english', 'fr': 'fran&ccedil;ais', 'de': 'deutsch', 'es': 'espa&ntilde;ol'} %}
     {% set passeggeri = manuali_passeggeri() %}
     {% if passeggeri %}
     <br>
     Manuale per i passeggeri:
-    {% set nomi = {'it': 'italiano', 'en': 'english', 'fr': 'fran&ccedil;ais', 'de': 'deutsch', 'es': 'espa&ntilde;ol'} %}
     {% for l in passeggeri %}
       <a href="{{ url_for('scarica_manuale_passeggeri', lingua=l) }}">{{ nomi[l] | safe }}</a>{% if not loop.last %} &middot; {% endif %}
+    {% endfor %}
+    {% endif %}
+    {% set informative = informative_passeggeri() %}
+    {% if informative %}
+    <br>
+    Informative per i passeggeri:
+    {% for l in informative %}
+      <a href="{{ url_for('scarica_informativa_passeggeri', lingua=l) }}">{{ nomi[l] | safe }}</a>{% if not loop.last %} &middot; {% endif %}
     {% endfor %}
     {% endif %}
     {% if guida_bordo() %}
