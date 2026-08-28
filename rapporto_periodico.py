@@ -56,7 +56,7 @@ def componi_messaggio(cadenza: str, dati: Dict[str, Any],
         f"Rapporto {cadenza} della sperimentazione, "
         f"{descrizione(cadenza, da, a)}.",
         "",
-        f"  Corse in servizio      {dati['corse']['totale']}",
+        f"  Salite a bordo         {dati['corse']['totale']}",
         f"  Nuove registrazioni    {dati['registrazioni']['totale']}",
         f"  Valutazioni ricevute   {dati['voti']['totale']}",
     ]
@@ -185,7 +185,7 @@ def componi_html(cadenza: str, dati: Dict[str, Any], da: date, a: date) -> str:
     riquadri = (
         f'<table width="100%" cellpadding="0" cellspacing="0" border="0">'
         f"<tr>"
-        + _riquadro(str(dati["corse"]["totale"]), "corse in servizio",
+        + _riquadro(str(dati["corse"]["totale"]), "salite a bordo",
                     f"in {dati['corse']['giorni_di_servizio']} giorni di esercizio")
         + _riquadro(str(dati["registrazioni"]["totale"]), "nuove registrazioni",
                     "persone iscritte nel periodo")

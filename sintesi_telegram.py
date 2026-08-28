@@ -88,17 +88,11 @@ def componi(dati: Dict[str, Any], giorno: date) -> str:
         coda = f"  <i>{scarto}</i>" if scarto else ""
         righe.append(f"{etichetta}: <b>{valore}</b>{coda}")
 
-    voce("Corse", corse, "corse")
+    voce("Salite a bordo", corse, "corse")
     voce("Nuove registrazioni", dati["registrazioni"]["totale"], "registrazioni")
     voce("Valutazioni", dati["voti"]["totale"], "valutazioni")
     if dati["voti"]["media"]:
         voce("Voto medio", f"{dati['voti']['media']} / 5", "voto")
-    # La durata si ricava solo dalle corse chiuse: se quasi tutte sono rimaste
-    # aperte il valore mediano descrive due o tre corse, non la giornata.
-    aperte = dati["corse"].get("ancora_aperte", 0)
-    chiuse = corse - aperte
-    if chiuse >= 3 and chiuse * 2 >= corse:
-        righe.append(f"Durata tipica: <b>{dati['corse']['durata_tipica_min']} min</b>")
 
     salite = [f for f in dati.get("fermate", []) if f.get("quante")]
     if salite:
@@ -108,9 +102,10 @@ def componi(dati: Dict[str, Any], giorno: date) -> str:
             righe.append(f"  • {html.escape(fermata['nome'])}: "
                          f"{fermata['quante']}")
 
+    aperte = dati["corse"].get("ancora_aperte", 0)
     if aperte:
         righe.append("")
-        righe.append(f"<i>{aperte} corse risultano ancora aperte.</i>")
+        righe.append(f"<i>{aperte} salite risultano ancora aperte.</i>")
 
     return "\n".join(righe)
 

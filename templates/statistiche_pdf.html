@@ -230,13 +230,8 @@ table.voci tbody tr:last-child { border-bottom: none }
   </div></div>
   <div class="voce"><div class="dentro">
     <span class="cifra">{{ dati.corse.totale }}</span>
-    <span class="che">corse in servizio</span>
+    <span class="che">salite a bordo</span>
     <span class="nota">in {{ dati.corse.giorni_di_servizio }} giorni di esercizio</span>
-  </div></div>
-  <div class="voce"><div class="dentro">
-    <span class="cifra">{{ dati.corse.durata_tipica_min }}<small> min</small></span>
-    <span class="che">durata tipica</span>
-    <span class="nota">valore mediano</span>
   </div></div>
   <div class="voce"><div class="dentro">
     <span class="cifra">{{ dati.voti.media if dati.voti.media else '—' }}{% if dati.voti.media %}<small> / 5</small>{% endif %}</span>
@@ -250,7 +245,15 @@ table.voci tbody tr:last-child { border-bottom: none }
   fascia d'et&agrave;, sesso, rapporto con la citt&agrave;, condizione
   professionale, orari e valutazioni. Nome, cognome e indirizzo di posta
   elettronica non sono accessibili, e la data di nascita non viene conservata.
-  Le corse dei mezzi di collaudo sono escluse da ogni conteggio.
+  Le salite sui mezzi di collaudo sono escluse da ogni conteggio.
+</p>
+
+<p class="minuto">
+  <b>Una salita non &egrave; una corsa.</b> Il conteggio nasce da chi inquadra
+  il codice per salire: quattro persone che prendono la stessa navetta sono
+  quattro salite, non quattro corse. Quante corse abbia effettivamente svolto
+  il mezzo non risulta da questi dati, che vengono per intero
+  dall'applicazione dei passeggeri.
 </p>
 
 {% if dati.confronto %}
@@ -351,8 +354,8 @@ table.voci tbody tr:last-child { border-bottom: none }
 
 <h2><span class="numero">{{ 2 + scarto }}</span>Utilizzo del servizio</h2>
 <div class="due">
-  {{ blocco("Corse per mezzo", dati.per_mezzo, true) }}
-  {{ blocco("Conclusione della corsa", dati.per_chiusura, true) }}
+  {{ blocco("Salite per mezzo", dati.per_mezzo, true) }}
+  {{ blocco("Come si chiude la salita", dati.per_chiusura, true) }}
 </div>
 
 {% if dati.per_ora %}
@@ -380,11 +383,13 @@ table.voci tbody tr:last-child { border-bottom: none }
 
 {% if dati.corse.ancora_aperte %}
 <div class="avvertenza">
-  <b>{{ dati.corse.ancora_aperte }} corse su {{ dati.corse.totale }} risultano
+  <b>{{ dati.corse.ancora_aperte }} salite su {{ dati.corse.totale }} risultano
   ancora aperte</b>: nessuno le ha chiuse con una valutazione e non sono state
-  sostituite da una nuova salita. &Egrave; la ragione per cui la durata &egrave;
-  riportata come valore mediano e non come media aritmetica, che ne
-  risulterebbe moltiplicata per sei.
+  sostituite da una nuova salita. &Egrave; la ragione per cui questo documento
+  non riporta alcuna durata del viaggio: una salita si chiude quando il
+  passeggero riprende in mano il telefono, non quando la navetta arriva, e il
+  tempo che ne risulterebbe misurerebbe la seconda cosa spacciandola per la
+  prima.
 </div>
 {% endif %}
 
@@ -492,7 +497,7 @@ table.voci tbody tr:last-child { border-bottom: none }
   </tbody>
 </table>
 <p class="minuto">
-  {{ dati.voti.totale }} valutazioni espresse su {{ dati.corse.totale }} corse,
+  {{ dati.voti.totale }} valutazioni espresse su {{ dati.corse.totale }} salite,
   di cui {{ dati.voti.con_commento }} accompagnate da un commento scritto. I
   commenti non sono riportati in questo documento: sono testo libero e possono
   contenere riferimenti a persone.

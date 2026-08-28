@@ -253,9 +253,6 @@ def raccogli(giorni: int = 30,
         f"count(*) FILTER (WHERE con_valutazione), "
         f"count(*) FILTER (WHERE lat IS NOT NULL), "
         f"min(iniziato_il), max(iniziato_il), "
-        f"percentile_cont(0.5) WITHIN GROUP ("
-        f"  ORDER BY EXTRACT(EPOCH FROM (terminato_il - iniziato_il))) "
-        f"  FILTER (WHERE terminato_il IS NOT NULL), "
         f"count(*) FILTER (WHERE terminato_il IS NULL) "
         f"FROM vista_utilizzo WHERE {filtro}{quando}")[0]
 
@@ -371,8 +368,7 @@ def raccogli(giorni: int = 30,
                                if totale_corse else 0.0,
             "prima": corse[4],
             "ultima": corse[5],
-            "durata_tipica_min": round(float(corse[6] or 0) / 60.0, 1),
-            "ancora_aperte": corse[7] or 0,
+            "ancora_aperte": corse[6] or 0,
             "di_prova": prova,
         },
         "per_giorno": _serie_giornaliera(per_giorno, giorni),
@@ -409,13 +405,11 @@ def raccogli(giorni: int = 30,
 # I totali di sempre — quante persone risultano registrate in tutto — non si
 # confrontano, perche' crescono e basta.
 GRANDEZZE = (
-    ("corse", "Corse in servizio", lambda d: d["corse"]["totale"]),
+    ("corse", "Salite a bordo", lambda d: d["corse"]["totale"]),
     ("registrazioni", "Nuove registrazioni",
      lambda d: d["registrazioni"]["totale"]),
     ("valutazioni", "Valutazioni ricevute", lambda d: d["voti"]["totale"]),
     ("voto", "Voto medio", lambda d: d["voti"]["media"] or 0),
-    ("durata", "Durata tipica (min)",
-     lambda d: d["corse"]["durata_tipica_min"]),
     ("giorni", "Giorni di esercizio",
      lambda d: d["corse"]["giorni_di_servizio"]),
 )

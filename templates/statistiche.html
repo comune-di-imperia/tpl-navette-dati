@@ -42,7 +42,13 @@
   programmazione, ma perch&eacute; il database li nega. La data di nascita non
   compare perch&eacute; l'applicazione non la conserva pi&ugrave;: del profilo
   resta la sola fascia d'et&agrave;.
-  {% if dati %}Le corse dei mezzi di collaudo sono escluse.{% endif %}
+  {% if dati %}Le salite sui mezzi di collaudo sono escluse.{% endif %}
+</p>
+
+<p class="minuto">
+  <b>Una salita non &egrave; una corsa</b>: si conta chi inquadra il codice per
+  salire, quindi quattro persone sulla stessa navetta sono quattro salite.
+  Quante corse abbia svolto il mezzo non risulta da qui.
 </p>
 
 {% if errore %}
@@ -62,29 +68,24 @@
   </div>
   <div class="riquadro">
     <span class="cifra">{{ dati.corse.totale }}</span>
-    <span class="voce">corse registrate</span>
+    <span class="voce">salite a bordo</span>
     <span class="nota">in {{ dati.corse.giorni_di_servizio }} giorni di servizio</span>
-  </div>
-  <div class="riquadro">
-    <span class="cifra">{{ dati.corse.durata_tipica_min }}<small> min</small></span>
-    <span class="voce">durata tipica</span>
-    <span class="nota">valore mediano, sulle corse concluse</span>
   </div>
   <div class="riquadro">
     <span class="cifra">{{ dati.voti.media if dati.voti.media else '&mdash;' | safe }}{% if dati.voti.media %}<small> / 5</small>{% endif %}</span>
     <span class="voce">voto medio</span>
-    <span class="nota">{{ dati.voti.totale }} valutazioni su {{ dati.corse.totale }} corse</span>
+    <span class="nota">{{ dati.voti.totale }} valutazioni su {{ dati.corse.totale }} salite</span>
   </div>
   <div class="riquadro">
     <span class="cifra">{{ dati.corse.quota_posizione }}<small>%</small></span>
-    <span class="voce">corse localizzate</span>
+    <span class="voce">salite localizzate</span>
     <span class="nota">{{ dati.corse.con_posizione }} con la posizione del mezzo</span>
   </div>
 </div>
 
 {% if dati.corse.di_prova %}
 <div class="avviso attenzione">
-  Sono escluse <b>{{ dati.corse.di_prova }}</b> corse dei mezzi di collaudo.
+  Sono escluse <b>{{ dati.corse.di_prova }}</b> salite sui mezzi di collaudo.
   Compaiono nel database ma non sono servizio.
 </div>
 {% endif %}
@@ -122,7 +123,7 @@
   {{ blocco("Condizione professionale", dati.anagrafica.professione) }}
 </div>
 
-<h2>Andamento delle corse</h2>
+<h2>Andamento delle salite</h2>
 {% set massimo = dati.per_giorno | map(attribute='quante') | max %}
 <div class="grafico">
   {% for punto in dati.per_giorno %}
@@ -132,9 +133,9 @@
   {% endfor %}
 </div>
 <p class="minuto">
-  Corse al giorno negli ultimi {{ dati.per_giorno | length }} giorni.
+  Salite al giorno negli ultimi {{ dati.per_giorno | length }} giorni.
   {% if dati.corse.prima %}
-  La prima corsa registrata &egrave; del
+  La prima salita registrata &egrave; del
   {{ dati.corse.prima.strftime('%d/%m/%Y') }}.
   {% endif %}
 </p>
@@ -158,7 +159,7 @@
   </tbody>
 </table>
 {% else %}
-<p class="minuto">Nessuna corsa registrata.</p>
+<p class="minuto">Nessuna salita registrata.</p>
 {% endif %}
 
 <h2>Chi sale a bordo</h2>
@@ -174,17 +175,17 @@
   {{ blocco('Condizione professionale', dati.professione) }}
 </div>
 
-<h2>Mezzi e conclusione della corsa</h2>
+<h2>Mezzi e chiusura delle salite</h2>
 {% if dati.corse.ancora_aperte %}
 <p class="minuto">
-  {{ dati.corse.ancora_aperte }} corse risultano <b>ancora aperte</b>: nessuno
+  {{ dati.corse.ancora_aperte }} salite risultano <b>ancora aperte</b>: nessuno
   le ha chiuse con una valutazione e non sono state sostituite da una nuova
-  salita. Sono quelle che gonfiano la durata media, ed &egrave; il motivo per
-  cui sopra si riporta il valore mediano.
+  salita. Finch&eacute; la fine del viaggio non la registra il mezzo, di quelle
+  salite non si sa quando siano finite.
 </p>
 {% endif %}
 <div class="colonne">
-  {{ blocco('Corse per mezzo', dati.per_mezzo) }}
+  {{ blocco('Salite per mezzo', dati.per_mezzo) }}
   {{ blocco("Come si è chiusa", dati.per_chiusura) }}
 </div>
 
@@ -281,7 +282,7 @@
 {% endif %}
 {% else %}
 <p class="minuto">
-  Nessuna corsa ha la posizione registrata, quindi non &egrave; possibile dire
+  Nessuna salita ha la posizione registrata, quindi non &egrave; possibile dire
   dove si sale.
 </p>
 {% endif %}
