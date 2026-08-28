@@ -55,10 +55,10 @@ legal:
   repoOwner: Comune di Imperia
 
 maintenance:
-  type: contract
-  contractors:
-    - name: "Studio Capacci"
-      until: "2027-12-31"
+  type: internal
+  maintainers:
+    - name: "Comune di Imperia"
+      email: "protocollo@comune.imperia.it"
 
 localisation:
   localisationReady: false
