@@ -121,6 +121,17 @@ def _fra_date(colonna: str, periodo: Optional[Tuple]) -> str:
             f" AND {colonna} < '{(a + timedelta(days=1)).isoformat()}'")
 
 
+def registrazioni_totali() -> int:
+    """Quante persone risultano registrate in tutto, senza limiti di periodo.
+
+    Serve dove si guarda una giornata sola: le due iscrizioni di ieri non
+    dicono se il servizio conta cento persone o mille. Si contano come nella
+    pagina, cancellazioni comprese, altrimenti due numeri che si chiamano allo
+    stesso modo direbbero cose diverse.
+    """
+    return _interroga("SELECT count(*) FROM vista_registrazioni")[0][0] or 0
+
+
 def periodo_precedente(da: date, a: date) -> Tuple[date, date]:
     """Il periodo di pari durata che finisce il giorno prima."""
     durata = (a - da).days + 1

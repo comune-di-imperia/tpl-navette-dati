@@ -75,7 +75,8 @@ def _variazione(voce: Dict[str, Any]) -> str:
     return f"{freccia} {voce['differenza']:+g} ({voce['percentuale']:+g}%)"
 
 
-def componi(dati: Dict[str, Any], giorno: date) -> str:
+def componi(dati: Dict[str, Any], giorno: date,
+            registrati_in_tutto: Optional[int] = None) -> str:
     """Messaggio in HTML, il formato che accetta Telegram."""
     corse = dati["corse"]["totale"]
     scostamenti = {v["chiave"]: v for v in dati.get("confronto", {}).get("voci", [])}
@@ -90,6 +91,10 @@ def componi(dati: Dict[str, Any], giorno: date) -> str:
 
     voce("Salite a bordo", corse, "corse")
     voce("Nuove registrazioni", dati["registrazioni"]["totale"], "registrazioni")
+    # Senza confronto: e' un totale che cresce e basta, una freccia in su
+    # direbbe soltanto che il tempo passa.
+    if registrati_in_tutto is not None:
+        righe.append(f"Registrate in tutto: <b>{registrati_in_tutto}</b>")
     voce("Valutazioni", dati["voti"]["totale"], "valutazioni")
     if dati["voti"]["media"]:
         voce("Voto medio", f"{dati['voti']['media']} / 5", "voto")
@@ -138,7 +143,7 @@ def esegui(giorno: Optional[date] = None, prova: bool = False) -> int:
     """Manda la sintesi. Restituisce a quanti e' arrivata."""
     giorno = giorno or (date.today() - timedelta(days=1))
     dati = statistiche.raccogli(periodo=(giorno, giorno))
-    testo = componi(dati, giorno)
+    testo = componi(dati, giorno, statistiche.registrazioni_totali())
 
     if prova:
         print(testo)
