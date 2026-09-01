@@ -305,6 +305,21 @@ def raccogli(giorni: int = 30,
         "FROM vista_registrazioni WHERE true"
         + _fra_date("registrato_il", periodo))[0]
 
+    # La giornata in corso ha senso solo dove si guarda tutto l'esercizio: in
+    # un rapporto su una settimana conclusa "oggi" sarebbe fuori periodo.
+    # La data la decide il database, che lavora in ora italiana: chi legge la
+    # pagina intende il proprio oggi, non quello del meridiano di Greenwich.
+    oggi = None
+    if not periodo:
+        oggi = {
+            "salite": _interroga(
+                f"SELECT count(*) FROM vista_utilizzo WHERE {filtro} "
+                f"AND iniziato_il::date = current_date")[0][0] or 0,
+            "registrazioni": _interroga(
+                "SELECT count(*) FROM vista_registrazioni "
+                "WHERE registrato_il::date = current_date")[0][0] or 0,
+        }
+
     iscritti_giorno = _interroga(
         "SELECT registrato_il, count(*) FROM vista_registrazioni "
         "WHERE registrato_il IS NOT NULL"
@@ -403,6 +418,7 @@ def raccogli(giorni: int = 30,
             "con_commento": commenti,
         },
         "aggiornato": datetime.now(timezone.utc),
+        "oggi": oggi,
         "periodo": {"da": periodo[0], "a": periodo[1]} if periodo else None,
     }
 

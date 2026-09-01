@@ -65,11 +65,17 @@
       {{ dati.registrazioni.con_consenso }} con il consenso prestato{% if dati.registrazioni.cancellate %},
       {{ dati.registrazioni.cancellate }} cancellate{% endif %}
     </span>
+    {% if dati.oggi %}
+    <span class="oggi">oggi <b>{{ dati.oggi.registrazioni }}</b></span>
+    {% endif %}
   </div>
   <div class="riquadro">
     <span class="cifra">{{ dati.corse.totale }}</span>
     <span class="voce">salite a bordo</span>
     <span class="nota">in {{ dati.corse.giorni_di_servizio }} giorni di servizio</span>
+    {% if dati.oggi %}
+    <span class="oggi">oggi <b>{{ dati.oggi.salite }}</b></span>
+    {% endif %}
   </div>
   <div class="riquadro">
     <span class="cifra">{{ dati.voti.media if dati.voti.media else '&mdash;' | safe }}{% if dati.voti.media %}<small> / 5</small>{% endif %}</span>
@@ -402,6 +408,12 @@
 .riquadro .cifra small { font-size: 16px; font-weight: 500; }
 .riquadro .voce { display: block; margin-top: 4px; font-size: 13.5px; }
 .riquadro .nota { display: block; color: var(--tenue); font-size: 12px; margin-top: 2px; }
+/* Il dato di giornata sta staccato dalla nota: e' un altro conto, non un
+   dettaglio del totale, e chi apre la pagina al mattino cerca quello. */
+.riquadro .oggi {
+  display: inline-block; margin-top: 9px; padding: 2px 9px; border-radius: 11px;
+  background: #eef3fa; color: var(--accento); font-size: 12px;
+}
 
 .grafico {
   display: flex; align-items: flex-end; gap: 2px; height: 110px;
