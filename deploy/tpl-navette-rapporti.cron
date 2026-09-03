@@ -1,20 +1,23 @@
 # Rapporti periodici e sintesi giornaliera della sperimentazione TPL.
 # Va in /etc/cron.d/tpl-navette-rapporti, proprietario root, permessi 0644.
 #
-# Gli orari sono in ora italiana. Il server tiene l'ora universale, e i timer
-# di systemd di questa versione non sanno cambiare fuso: con un orario fisso
-# in UTC i messaggi arriverebbero un'ora prima da ottobre a marzo.
-CRON_TZ=Europe/Rome
+# Gli orari qui sotto sono in ORA UNIVERSALE, che e' quella del sistema.
+# Il cron di Ubuntu NON riconosce CRON_TZ: la variabile non esiste nemmeno nel
+# binario, e messa nel crontab viene semplicemente ignorata. Ogni lavoro e'
+# percio' pianificato su DUE ore, quella dell'ora legale e quella dell'ora
+# solare, e `ORA_LOCALE` dice al lanciatore a quale ora italiana deve
+# effettivamente girare: l'altra esecuzione esce subito senza fare nulla.
+# Cambiare qui gli orari senza aggiornare ORA_LOCALE non sposta niente.
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
 
-# Lunedi' alle 6: la settimana conclusa, lunedi'-domenica.
-0 6 * * 1 tpl /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh rapporto-invia --cadenza settimanale 2>&1 | logger -t tpl-rapporto
+# Lunedi' alle 6 italiane: la settimana conclusa, lunedi'-domenica.
+0 4,5 * * 1 tpl ORA_LOCALE=06 /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh rapporto-invia --cadenza settimanale 2>&1 | logger -t tpl-rapporto
 
-# Il primo del mese alle 6: il mese concluso.
-0 6 1 * * tpl /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh rapporto-invia --cadenza mensile 2>&1 | logger -t tpl-rapporto
+# Il primo del mese alle 6 italiane: il mese concluso.
+0 4,5 1 * * tpl ORA_LOCALE=06 /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh rapporto-invia --cadenza mensile 2>&1 | logger -t tpl-rapporto
 
-# Ogni mattina alle 9: la sintesi del giorno prima sui canali Telegram della
-# casella. Le giornate senza alcun movimento non generano messaggi.
-0 9 * * * tpl /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh sintesi-telegram 2>&1 | logger -t tpl-sintesi
+# Ogni mattina alle 9 italiane: la sintesi del giorno prima sui canali Telegram
+# della casella. Le giornate senza alcun movimento non generano messaggi.
+0 7,8 * * * tpl ORA_LOCALE=09 /opt/tpl-navette/scripts/tpl_navette/deploy/esegui-cli.sh sintesi-telegram 2>&1 | logger -t tpl-sintesi
