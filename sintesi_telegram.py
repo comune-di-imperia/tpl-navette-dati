@@ -19,15 +19,22 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from . import statistiche
 
 logger = logging.getLogger("tpl.sintesi")
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+
+# Il "ieri" della sintesi e' quello di chi la legge, e i confini della giornata
+# li taglia il database, che lavora in ora italiana. Dichiararlo qui invece di
+# affidarsi al fuso del sistema tiene le due cose d'accordo comunque sia
+# configurata la macchina.
+FUSO = ZoneInfo("Europe/Rome")
 
 GIORNI = ("lunedi'", "martedi'", "mercoledi'", "giovedi'", "venerdi'",
           "sabato", "domenica")
@@ -141,7 +148,7 @@ def _spedisci(token: str, chat_id: str, testo: str) -> bool:
 
 def esegui(giorno: Optional[date] = None, prova: bool = False) -> int:
     """Manda la sintesi. Restituisce a quanti e' arrivata."""
-    giorno = giorno or (date.today() - timedelta(days=1))
+    giorno = giorno or (datetime.now(FUSO).date() - timedelta(days=1))
     dati = statistiche.raccogli(periodo=(giorno, giorno))
     testo = componi(dati, giorno, statistiche.registrazioni_totali())
 

@@ -22,6 +22,7 @@ import os
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 try:
     import psycopg
@@ -34,6 +35,12 @@ from . import mappa
 # Mezzi che non fanno servizio: il collaudo non deve entrare nei numeri che
 # finiscono nella relazione al Ministero.
 MEZZI_DI_PROVA = ("BUS-PROVA",)
+
+# Il database taglia le giornate a mezzanotte italiana: il fuso e' impostato
+# sulla base dati, non sul sistema operativo. Le date che compaiono nelle
+# interrogazioni devono seguire lo stesso calendario, o una settimana comincia
+# in un punto e finisce in un altro.
+FUSO = ZoneInfo("Europe/Rome")
 
 # Lato della maglia con cui si raggruppano le salite vicine, in gradi.
 # 0,0004 gradi di latitudine sono circa 45 metri: abbastanza per tenere insieme
@@ -140,15 +147,20 @@ def periodo_precedente(da: date, a: date) -> Tuple[date, date]:
 
 
 def settimana_scorsa(oggi: Optional[date] = None) -> Tuple[date, date]:
-    """Da lunedi' a domenica della settimana conclusa."""
-    oggi = oggi or datetime.now(timezone.utc).date()
+    """Da lunedi' a domenica della settimana conclusa.
+
+    Il giorno e' quello italiano, come i confini che il database mette fra una
+    giornata e l'altra. Dichiararlo qui invece di prendere il giorno del
+    sistema tiene le due cose d'accordo comunque sia configurata la macchina.
+    """
+    oggi = oggi or datetime.now(FUSO).date()
     lunedi = oggi - timedelta(days=oggi.weekday() + 7)
     return (lunedi, lunedi + timedelta(days=6))
 
 
 def mese_scorso(oggi: Optional[date] = None) -> Tuple[date, date]:
     """Dal primo all'ultimo giorno del mese concluso."""
-    oggi = oggi or datetime.now(timezone.utc).date()
+    oggi = oggi or datetime.now(FUSO).date()
     fine = oggi.replace(day=1) - timedelta(days=1)
     return (fine.replace(day=1), fine)
 
@@ -206,7 +218,10 @@ def _serie_giornaliera(righe: List[Tuple], giorni: int = 30) -> List[Dict]:
     tre corse in tre settimane disegnerebbero la stessa linea.
     """
     per_giorno = {riga[0]: riga[1] for riga in righe}
-    oggi = datetime.now(timezone.utc).date()
+    # Le chiavi arrivano dal database, che raggruppa per giorno italiano: presa
+    # in ora universale, l'ultima colonna del grafico slitterebbe di un giorno
+    # nelle ore piccole.
+    oggi = datetime.now(FUSO).date()
     serie = []
     for scarto in range(giorni - 1, -1, -1):
         quel_giorno = oggi - timedelta(days=scarto)
