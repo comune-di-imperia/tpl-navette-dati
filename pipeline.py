@@ -139,6 +139,13 @@ def elabora(percorso_caricato: Path, invia: bool = True) -> Dict[str, Any]:
         pdf = genera_pdf(contesto, OUTPUT / (radice + "-report.pdf"))
         contesto["pdf"] = pdf.name
 
+        # Il contesto accanto al referto: pochi kilobyte che permettono di
+        # ristampare il documento se l'impaginazione cambia, senza rileggere
+        # dall'archivio decine di megabyte di dati grezzi.
+        from . import rigenera as _rigenera
+
+        _rigenera.salva_contesto(contesto, radice)
+
         destinatari = [
             d.strip() for d in os.environ.get("MAIL_TO", "").split(",") if d.strip()
         ]

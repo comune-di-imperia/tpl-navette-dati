@@ -79,6 +79,30 @@ TIPI = {
     "localizzazione": "localizzazione e navigazione",
 }
 
+# Percorrenza e velocita' che il computer di localizzazione ricava dalla
+# traccia satellitare non si riportano.
+#
+# Il segnale ogni tanto si perde, e da una traccia con dei buchi escono una
+# distanza piu' corta e una velocita' di punta piu' alta del vero: nello stesso
+# documento si leggevano 21,775 km misurati dall'odometro e 17,759 km contati
+# dal GPS, 15,26 km/h di velocita' massima a bordo e 18,86 dal satellite. Due
+# numeri che si contraddicono nella stessa pagina non lasciano al lettore modo
+# di scegliere quello buono, e il buono c'e': e' la misura del veicolo.
+#
+# Restano nei dati elaborati, dove sono una misura fra le altre; sulla carta,
+# dove diventano un'affermazione, no.
+SOLO_TELEMETRIA = frozenset(
+    {
+        "distanza_totale_km",
+        "velocita_media_kmh",
+        "velocita_massima_kmh",
+    }
+)
+
+
+def _escluse(tipo: str) -> frozenset:
+    return SOLO_TELEMETRIA if tipo == "localizzazione" else frozenset()
+
 
 def _e(testo: Any) -> str:
     return _html.escape(str(testo))
@@ -100,7 +124,7 @@ def _riquadro(valore: str, unita: str, etichetta: str) -> str:
     )
 
 
-def _in_evidenza(riepilogo: Dict[str, Any]) -> str:
+def _in_evidenza(riepilogo: Dict[str, Any], escluse: frozenset = frozenset()) -> str:
     """I quattro numeri che si guardano per primi."""
     scelte = [
         ("distanza_totale_km", "km", "Distanza percorsa", 3),
@@ -112,7 +136,7 @@ def _in_evidenza(riepilogo: Dict[str, Any]) -> str:
     ]
     riquadri, viste = [], set()
     for chiave, unita, etichetta, dec in scelte:
-        if chiave not in riepilogo or etichetta in viste:
+        if chiave not in riepilogo or chiave in escluse or etichetta in viste:
             continue
         # distanza e percorrenza dicono la stessa cosa: basta la prima presente
         if etichetta in ("Distanza percorsa", "Percorrenza") and viste & {
@@ -124,7 +148,12 @@ def _in_evidenza(riepilogo: Dict[str, Any]) -> str:
         viste.add(etichetta)
         if len(riquadri) == 4:
             break
-    return f'<div class="riquadri">{"".join(riquadri)}</div>' if riquadri else ""
+    if not riquadri:
+        return ""
+    # Con meno di quattro riquadri si tiene la larghezza che avrebbero avuto
+    # in fila: uno solo, allargato per tutta la pagina, sembrerebbe un errore.
+    classe = "riquadri" if len(riquadri) == 4 else "riquadri pochi"
+    return f'<div class="{classe}">{"".join(riquadri)}</div>'
 
 
 def _barra_guida(riepilogo: Dict[str, Any]) -> str:
@@ -167,11 +196,11 @@ modalita'.</p>
 """
 
 
-def _tabella(riepilogo: Dict[str, Any]) -> str:
+def _tabella(riepilogo: Dict[str, Any], escluse: frozenset = frozenset()) -> str:
     """Le altre grandezze, con nome esteso e unita'."""
     righe = []
     for chiave, etichetta, unita, decimali in ETICHETTE:
-        if chiave not in riepilogo or chiave in CHIAVI_GUIDA:
+        if chiave not in riepilogo or chiave in CHIAVI_GUIDA or chiave in escluse:
             continue
         valore = _numero(riepilogo[chiave], decimali)
         righe.append(
@@ -227,6 +256,7 @@ h2 { font-size: 11.5pt; color: #1f5f9e; margin: 20px 0 6px;
 h3 { font-size: 10pt; margin: 16px 0 4px; color: #46505f; }
 
 .riquadri { display: flex; gap: 8px; margin: 12px 0 4px; }
+.riquadri.pochi .riquadro { flex: 0 0 calc(25% - 6px); }
 .riquadro { flex: 1; background: #f4f7fb; border: 1px solid #d8e0ea;
             border-radius: 5px; padding: 9px 10px; }
 .riquadro .valore { font-size: 15pt; font-weight: bold; color: #1f5f9e;
@@ -282,11 +312,13 @@ def componi(contesto: Dict[str, Any]) -> str:
         riepilogo = info.get("riepilogo") or {}
         if not riepilogo:
             continue
-        tipo = TIPI.get(info.get("tipo", ""), info.get("tipo", "?"))
+        genere = info.get("tipo", "")
+        tipo = TIPI.get(genere, genere or "?")
+        escluse = _escluse(genere)
         sezioni.append(f"<h2>{_e(tipo.capitalize())} <small>({_e(pc)})</small></h2>")
-        sezioni.append(_in_evidenza(riepilogo))
+        sezioni.append(_in_evidenza(riepilogo, escluse))
         sezioni.append(_barra_guida(riepilogo))
-        sezioni.append(_tabella(riepilogo))
+        sezioni.append(_tabella(riepilogo, escluse))
 
     if not sezioni:
         sezioni.append('<p class="vuoto">Nessun dato analizzabile nell\'archivio.</p>')

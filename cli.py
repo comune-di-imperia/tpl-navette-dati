@@ -85,6 +85,17 @@ def main(argv=None) -> int:
         "--prova", action="store_true", help="stampa il messaggio senza spedirlo"
     )
 
+    c = sub.add_parser(
+        "referti-rigenera",
+        help="rifa' i referti gia' prodotti con l'impaginazione corrente",
+    )
+    c.add_argument(
+        "--prova", action="store_true", help="dice cosa farebbe, non tocca nulla"
+    )
+    c.add_argument(
+        "--solo", nargs="*", default=None, help="una o piu' radici, invece di tutte"
+    )
+
     c = sub.add_parser("elabora", help="elabora un archivio senza passare dal web")
     c.add_argument("--file", required=True)
     c.add_argument("--senza-email", action="store_true")
@@ -174,6 +185,23 @@ def main(argv=None) -> int:
         quanti = sintesi_telegram.esegui(giorno, prova=a.prova)
         if not a.prova:
             print(f"sintesi giornaliera: inviata a {quanti} destinatari")
+
+    elif a.comando == "referti-rigenera":
+        from . import rigenera as modulo
+
+        esiti = modulo.rigenera_tutti(solo=a.solo, prova=a.prova)
+        for e in esiti:
+            if e["esito"] == "rifatto":
+                print(f"{e['radice']}: rifatto "
+                      f"({e['prima_byte']} -> {e['dopo_byte']} byte)")
+            else:
+                print(f"{e['radice']}: {e['esito']}")
+        rifatti = sum(1 for e in esiti if e["esito"] == "rifatto")
+        print(f"\nesaminati {len(esiti)}, "
+              f"{'da rifare' if a.prova else 'rifatti'} "
+              f"{rifatti if not a.prova else sum(1 for e in esiti if e['esito'] == 'da rifare')}")
+        if not a.prova and rifatti:
+            print(f"copie dei sostituiti in {modulo.cartella_sostituiti()}")
 
     elif a.comando == "elabora":
         from . import pipeline
