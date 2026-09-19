@@ -17,7 +17,7 @@ import os
 import secrets
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -714,6 +714,62 @@ def leggi_registro(limite: int = 200, utente: str = "") -> List[Dict[str, Any]]:
         par.append(utente)
     sql += " ORDER BY quando DESC, id DESC LIMIT ?"
     par.append(limite)
+    with connessione() as con:
+        return [dict(r) for r in con.execute(sql, par)]
+
+
+def lunedi_di(giorno: date) -> date:
+    return giorno - timedelta(days=giorno.weekday())
+
+
+def settimana_corrente() -> str:
+    """Lunedi' della settimana in corso, come ``AAAA-MM-GG``."""
+    return lunedi_di(datetime.now(timezone.utc).date()).isoformat()
+
+
+def settimane_registro(utente: str = "") -> List[Dict[str, Any]]:
+    """Settimane presenti nel registro, dalla piu' recente, con quante voci.
+
+    La settimana va da lunedi' a domenica e si misura in **ora universale**,
+    la stessa con cui il registro viene scritto, mostrato ed esportato: una
+    riga che a video porta un certo giorno deve cadere nella settimana di quel
+    giorno, altrimenti chi cerca un'operazione non la trova dove la legge.
+
+    Il conteggio serve al menu di scelta: una settimana con tre voci e una con
+    duecento vanno distinte prima di aprirle, non dopo.
+    """
+    sql = (
+        "SELECT date(quando, 'weekday 0', '-6 days') AS lunedi, count(*) AS quante "
+        "FROM registro"
+    )
+    par: List[Any] = []
+    if utente:
+        sql += " WHERE utente=?"
+        par.append(utente)
+    sql += " GROUP BY 1 ORDER BY 1 DESC"
+    with connessione() as con:
+        return [
+            {"lunedi": r[0], "quante": r[1]} for r in con.execute(sql, par) if r[0]
+        ]
+
+
+def leggi_registro_settimana(lunedi: str, utente: str = "") -> List[Dict[str, Any]]:
+    """Le voci di una settimana, dalla piu' recente.
+
+    Si filtra per intervallo invece che ricalcolando la settimana su ogni riga:
+    cosi' la ricerca passa dall'indice su ``quando``, e il registro puo'
+    crescere senza che la pagina rallenti.
+    """
+    inizio = date.fromisoformat(lunedi)
+    da = f"{inizio.isoformat()}T00:00:00+00:00"
+    a = f"{(inizio + timedelta(days=7)).isoformat()}T00:00:00+00:00"
+
+    sql = "SELECT * FROM registro WHERE quando >= ? AND quando < ?"
+    par: List[Any] = [da, a]
+    if utente:
+        sql += " AND utente=?"
+        par.append(utente)
+    sql += " ORDER BY quando DESC, id DESC"
     with connessione() as con:
         return [dict(r) for r in con.execute(sql, par)]
 

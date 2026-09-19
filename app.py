@@ -22,7 +22,7 @@ import shutil
 import threading
 import time
 import zipfile
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from typing import Optional
@@ -1184,10 +1184,39 @@ def dispositivi_azione():
 @app.route("/registro")
 @richiede_permesso(permessi.LEGGE_REGISTRO)
 def registro():
+    """Il registro una settimana per volta.
+
+    Con un mese di esercizio le righe sono gia' centinaia, e una pagina unica
+    si consulta male: l'ordine cronologico serve a ricostruire una giornata,
+    non a scorrere. La settimana e' l'unita' con cui si ragiona quando si
+    cerca "quando e' successo", ed e' anche quella dei rapporti periodici.
+    """
     filtro = request.args.get("utente", "")
+    settimane = db.settimane_registro(filtro)
+    disponibili = [s["lunedi"] for s in settimane]
+
+    # La scelta arriva dall'indirizzo: si accetta solo se e' una delle
+    # settimane che esistono davvero, altrimenti si apre la piu' recente.
+    scelta = request.args.get("settimana", "")
+    if scelta not in disponibili:
+        scelta = disponibili[0] if disponibili else db.settimana_corrente()
+
+    posizione = disponibili.index(scelta) if scelta in disponibili else -1
+    # L'elenco e' dalla piu' recente: la precedente sta dopo, la successiva prima.
+    precedente = (disponibili[posizione + 1]
+                  if 0 <= posizione < len(disponibili) - 1 else None)
+    successiva = disponibili[posizione - 1] if posizione > 0 else None
+
+    inizio = date.fromisoformat(scelta)
     return render_template(
         "registro.html",
-        voci=db.leggi_registro(limite=500, utente=filtro),
+        voci=db.leggi_registro_settimana(scelta, utente=filtro),
+        settimane=settimane,
+        settimana=scelta,
+        da=inizio,
+        a=inizio + timedelta(days=6),
+        precedente=precedente,
+        successiva=successiva,
         filtro=filtro,
         utenti=db.elenco_utenti(),
     )

@@ -12,16 +12,53 @@
       {% endfor %}
     </select>
   </label>
-  <noscript><button type="submit">Filtra</button></noscript>
+  <label>Settimana
+    <select name="settimana" onchange="this.form.submit()">
+      {% for s in settimane %}
+      <option value="{{ s.lunedi }}" {% if s.lunedi == settimana %}selected{% endif %}>
+        dal {{ s.lunedi[8:10] }}/{{ s.lunedi[5:7] }}/{{ s.lunedi[0:4] }}
+        &middot; {{ s.quante }} voci
+      </option>
+      {% else %}
+      <option value="{{ settimana }}">nessuna attivit&agrave; registrata</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit">Mostra</button></noscript>
 </form>
 
+<div class="settimana">
+  <div class="passo">
+    {% if precedente %}
+    <a class="bottone" href="{{ url_for('registro', settimana=precedente, utente=filtro) }}">&lsaquo; precedente</a>
+    {% else %}
+    <span class="bottone spento">&lsaquo; precedente</span>
+    {% endif %}
+  </div>
+  <div class="intervallo">
+    Settimana dal <b>{{ da.strftime('%d/%m/%Y') }}</b>
+    al <b>{{ a.strftime('%d/%m/%Y') }}</b>
+    <span class="minuto">&middot; {{ voci | length }} voci</span>
+  </div>
+  <div class="passo">
+    {% if successiva %}
+    <a class="bottone" href="{{ url_for('registro', settimana=successiva, utente=filtro) }}">successiva &rsaquo;</a>
+    {% else %}
+    <span class="bottone spento">successiva &rsaquo;</span>
+    {% endif %}
+  </div>
+</div>
+
 <p>
-  <a class="bottone" href="{{ url_for('esporta_registro', utente=filtro) }}">Esporta in CSV</a>
+  <a class="bottone" href="{{ url_for('esporta_registro', utente=filtro) }}">Esporta tutto in CSV</a>
 </p>
 <p class="minuto">
-  A video e nell'esportazione compaiono i mesi ancora in linea. Lo storico
-  completo e' archiviato mensilmente sul bucket S3 del progetto, in
-  <code>registro/AAAA-MM.jsonl.gz</code>.
+  La settimana va da luned&igrave; a domenica ed &egrave; misurata in ora
+  universale, la stessa della colonna <i>Quando</i>: una riga cade nella
+  settimana del giorno con cui &egrave; scritta qui sotto.
+  L'esportazione comprende tutti i mesi ancora in linea, non la sola settimana
+  mostrata. Lo storico completo &egrave; archiviato mensilmente sul bucket S3
+  del progetto, in <code>registro/AAAA-MM.jsonl.gz</code>.
 </p>
 
 <table class="elenco">
@@ -40,8 +77,23 @@
       <td class="nowrap">{{ v.indirizzo_ip }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="vuoto">registro vuoto</td></tr>
+    <tr><td colspan="6" class="vuoto">nessuna attivit&agrave; in questa settimana</td></tr>
   {% endfor %}
   </tbody>
 </table>
+
+<style>
+/* Barra di navigazione fra le settimane: i due passi agli estremi e
+   l'intervallo al centro, cosi' i bottoni stanno sempre nello stesso punto
+   anche quando la scritta in mezzo cambia lunghezza. */
+.settimana {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin: 14px 0 6px; flex-wrap: wrap;
+}
+.settimana .intervallo { text-align: center; flex: 1 1 auto; }
+.settimana .passo { flex: 0 0 auto; }
+/* Il passo che non porta da nessuna parte resta al suo posto invece di
+   sparire: un bottone che si sposta sotto il dito e' peggio di uno spento. */
+.bottone.spento { opacity: .35; pointer-events: none; }
+</style>
 {% endblock %}
