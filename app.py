@@ -45,6 +45,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from . import (
+    account,
     analisi,
     avvisi,
     casella,
@@ -59,7 +60,6 @@ from . import (
     rapporti,
     risposte,
     statistiche,
-    utenti,
 )
 
 logger = logging.getLogger("tpl.app")
@@ -1219,8 +1219,8 @@ def gestione_email():
         modelli=risposte.MODELLI,
         predefinito=risposte.PREDEFINITO,
         errore=errore,
-        ponte_attivo=utenti.disponibile(),
-        parola=utenti.PAROLA_CONFERMA,
+        ponte_attivo=account.disponibile(),
+        parola=account.PAROLA_CONFERMA,
     )
 
 
@@ -1237,8 +1237,8 @@ def gestione_email_cerca():
     uid = request.form.get("uid", "")
     indirizzo = (request.form.get("indirizzo") or "").strip()
     try:
-        esito = utenti.cerca(indirizzo)
-    except utenti.ErroreUtenti as guasto:
+        esito = account.cerca(indirizzo)
+    except account.ErroreAccount as guasto:
         flash(str(guasto), "attenzione")
     else:
         if esito.get("trovato"):
@@ -1283,14 +1283,14 @@ def gestione_email_rispondi():
 
     dettaglio = ""
     if cancellare:
-        if conferma != utenti.PAROLA_CONFERMA:
-            flash(f"Per cancellare i dati scrivi {utenti.PAROLA_CONFERMA} "
+        if conferma != account.PAROLA_CONFERMA:
+            flash(f"Per cancellare i dati scrivi {account.PAROLA_CONFERMA} "
                   f"nella casella di conferma.", "attenzione")
             return redirect(url_for("gestione_email", messaggio=uid))
 
         try:
-            esito = utenti.cancella(messaggio.indirizzo)
-        except utenti.ErroreUtenti as guasto:
+            esito = account.cancella(messaggio.indirizzo)
+        except account.ErroreAccount as guasto:
             flash(f"Cancellazione non eseguita: {guasto}", "attenzione")
             db.registra("email.cancellazione", utente=_utente(), esito="fallito",
                         dettaglio=str(guasto)[:200], indirizzo_ip=_ip())

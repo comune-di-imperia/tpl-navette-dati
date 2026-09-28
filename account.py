@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict
 
-logger = logging.getLogger("tpl.utenti")
+logger = logging.getLogger("tpl.account")
 
 CODA = Path(os.environ.get("TPL_UTENTI_CODA", "/var/lib/tpl-utenti"))
 RICHIESTE = CODA / "richieste"
@@ -29,7 +29,7 @@ PAUSA_S = 0.4
 PAROLA_CONFERMA = "CANCELLA"
 
 
-class ErroreUtenti(RuntimeError):
+class ErroreAccount(RuntimeError):
     """Messaggio destinato a chi sta usando la pagina, non al giornale."""
 
 
@@ -39,7 +39,7 @@ def disponibile() -> bool:
 
 def _chiedi(richiesta: Dict[str, Any]) -> Dict[str, Any]:
     if not disponibile():
-        raise ErroreUtenti(
+        raise ErroreAccount(
             "Il servizio di gestione degli account non e' attivo su questo "
             "server: la funzione e' disponibile solo dove gira l'applicazione "
             "dei passeggeri."
@@ -53,7 +53,7 @@ def _chiedi(richiesta: Dict[str, Any]) -> Dict[str, Any]:
         # il servizio deve trovare un file gia' completo, mai a meta'
         provvisorio.replace(definitivo)
     except OSError as errore:
-        raise ErroreUtenti(f"Richiesta non depositata: {errore}") from errore
+        raise ErroreAccount(f"Richiesta non depositata: {errore}") from errore
 
     attesa_fino = time.monotonic() + ATTESA_S
     risposta_file = RISPOSTE / nome
@@ -68,17 +68,17 @@ def _chiedi(richiesta: Dict[str, Any]) -> Dict[str, Any]:
                 risposta_file.unlink(missing_ok=True)
 
             if risposta.get("esito") != "ok":
-                raise ErroreUtenti(
+                raise ErroreAccount(
                     risposta.get("messaggio") or "Operazione rifiutata.")
             try:
                 return json.loads(risposta.get("uscita") or "{}")
             except json.JSONDecodeError as errore:
-                raise ErroreUtenti(
+                raise ErroreAccount(
                     "Risposta del servizio incomprensibile.") from errore
         time.sleep(PAUSA_S)
 
     definitivo.unlink(missing_ok=True)
-    raise ErroreUtenti(
+    raise ErroreAccount(
         "Il servizio di gestione degli account non ha risposto. "
         "Verificare che sia in esecuzione."
     )
