@@ -63,6 +63,10 @@ GESTIONE_DISPOSITIVI = "dispositivi.gestione"
 # all'amministratore: finche' la sperimentazione e' in corso, i numeri
 # sull'adesione sono materia del committente prima che di chi opera.
 LEGGE_STATISTICHE = "statistiche.leggi"
+# Rispondere a un cittadino a nome dell'Amministrazione, e soprattutto
+# cancellare i suoi dati, non e' operazione da delegare: resta
+# all'amministratore. La cancellazione non si disfa.
+GESTIONE_EMAIL = "email.gestione"
 
 PERMESSI: Dict[str, frozenset] = {
     AMMINISTRATORE: frozenset(
@@ -77,6 +81,7 @@ PERMESSI: Dict[str, frozenset] = {
             GESTIONE_CASELLA,
             GESTIONE_DISPOSITIVI,
             LEGGE_STATISTICHE,
+            GESTIONE_EMAIL,
         }
     ),
     TECNICO: frozenset(

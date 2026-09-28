@@ -32,6 +32,9 @@
     {% if ha_permesso('casella.leggi') %}
     <a href="{{ url_for('casella_sorveglianza') }}" {% if request.endpoint == 'casella_sorveglianza' %}class="attivo"{% endif %}>Casella</a>
     {% endif %}
+    {% if ha_permesso('email.gestione') %}
+    <a href="{{ url_for('gestione_email') }}" {% if request.endpoint and request.endpoint.startswith('gestione_email') %}class="attivo"{% endif %}>Gestione email</a>
+    {% endif %}
     {% if ha_permesso('registro.leggi') %}
     <a href="{{ url_for('registro') }}" {% if request.endpoint == 'registro' %}class="attivo"{% endif %}>Registro</a>
     {% endif %}

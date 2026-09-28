@@ -46,6 +46,7 @@ from werkzeug.utils import secure_filename
 
 from . import (
     analisi,
+    avvisi,
     casella,
     db,
     dispositivi,
@@ -54,8 +55,11 @@ from . import (
     permessi,
     pipeline,
     posta,
+    posta_in_arrivo,
     rapporti,
+    risposte,
     statistiche,
+    utenti,
 )
 
 logger = logging.getLogger("tpl.app")
@@ -1179,6 +1183,158 @@ def dispositivi_azione():
         indirizzo_ip=_ip(),
     )
     return redirect(url_for("dispositivi_bordo"))
+
+
+# --------------------------------------------------- gestione della posta
+@app.route("/email")
+@richiede_permesso(permessi.GESTIONE_EMAIL)
+def gestione_email():
+    """I messaggi arrivati in casella, per darvi corso.
+
+    Non sostituisce un programma di posta: mostra cio' che e' arrivato e
+    permette di fare le due cose che qui servono davvero — rispondere e, a chi
+    chiede la cancellazione dei propri dati, cancellare.
+    """
+    errore = ""
+    messaggi = []
+    try:
+        messaggi = posta_in_arrivo.elenco(limite=60)
+    except posta_in_arrivo.CasellaNonConfigurata as guasto:
+        errore = str(guasto)
+    except Exception as guasto:  # noqa: BLE001
+        errore = f"Casella non raggiungibile: {guasto}"
+
+    scelto = None
+    uid = request.args.get("messaggio", "")
+    if uid and not errore:
+        try:
+            scelto = posta_in_arrivo.leggi(uid)
+        except Exception as guasto:  # noqa: BLE001
+            errore = f"Messaggio non leggibile: {guasto}"
+
+    return render_template(
+        "email.html",
+        messaggi=messaggi,
+        scelto=scelto,
+        modelli=risposte.MODELLI,
+        predefinito=risposte.PREDEFINITO,
+        errore=errore,
+        ponte_attivo=utenti.disponibile(),
+        parola=utenti.PAROLA_CONFERMA,
+    )
+
+
+@app.route("/email/cerca", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_EMAIL)
+def gestione_email_cerca():
+    """Dice se a quell'indirizzo corrisponde un account, e che cosa comporta.
+
+    Si guarda sempre prima di cancellare: altrimenti si preme un pulsante
+    senza sapere quante corse e quante valutazioni si stanno per rendere
+    anonime, e quel pulsante non si disfa.
+    """
+    _verifica_gettone()
+    uid = request.form.get("uid", "")
+    indirizzo = (request.form.get("indirizzo") or "").strip()
+    try:
+        esito = utenti.cerca(indirizzo)
+    except utenti.ErroreUtenti as guasto:
+        flash(str(guasto), "attenzione")
+    else:
+        if esito.get("trovato"):
+            flash(
+                f"Account trovato: registrato il {str(esito.get('creato_il'))[:10]}. "
+                f"Cancellandolo diventerebbero anonimi {esito.get('viaggi', 0)} "
+                f"viaggi e {esito.get('valutazioni', 0)} valutazioni.", "esito")
+        else:
+            flash("Nessun account registrato con questo indirizzo.", "attenzione")
+    db.registra("email.ricerca", utente=_utente(), esito="eseguito",
+                dettaglio="ricerca account per indirizzo", indirizzo_ip=_ip())
+    return redirect(url_for("gestione_email", messaggio=uid))
+
+
+@app.route("/email/rispondi", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_EMAIL)
+def gestione_email_rispondi():
+    """Risponde al cittadino, cancellando prima l'account se e' stato chiesto.
+
+    L'ordine conta: se si deve cancellare lo si fa **prima** di scrivere che e'
+    stato fatto. Una risposta che annuncia una cancellazione non avvenuta e'
+    peggio del silenzio.
+    """
+    _verifica_gettone()
+    uid = request.form.get("uid", "")
+    testo = (request.form.get("testo") or "").strip()
+    cancellare = request.form.get("cancella") == "si"
+    conferma = (request.form.get("conferma") or "").strip().upper()
+
+    try:
+        messaggio = posta_in_arrivo.leggi(uid)
+    except Exception as guasto:  # noqa: BLE001
+        flash(f"Messaggio non leggibile: {guasto}", "attenzione")
+        return redirect(url_for("gestione_email"))
+    if messaggio is None:
+        flash("Messaggio non trovato: forse e' stato spostato.", "attenzione")
+        return redirect(url_for("gestione_email"))
+
+    if not testo:
+        flash("La risposta e' vuota.", "attenzione")
+        return redirect(url_for("gestione_email", messaggio=uid))
+
+    dettaglio = ""
+    if cancellare:
+        if conferma != utenti.PAROLA_CONFERMA:
+            flash(f"Per cancellare i dati scrivi {utenti.PAROLA_CONFERMA} "
+                  f"nella casella di conferma.", "attenzione")
+            return redirect(url_for("gestione_email", messaggio=uid))
+
+        try:
+            esito = utenti.cancella(messaggio.indirizzo)
+        except utenti.ErroreUtenti as guasto:
+            flash(f"Cancellazione non eseguita: {guasto}", "attenzione")
+            db.registra("email.cancellazione", utente=_utente(), esito="fallito",
+                        dettaglio=str(guasto)[:200], indirizzo_ip=_ip())
+            return redirect(url_for("gestione_email", messaggio=uid))
+
+        if esito.get("esito") != "cancellato":
+            flash(f"Nessun account cancellato ({esito.get('esito')}): "
+                  f"la risposta non e' stata inviata.", "attenzione")
+            db.registra("email.cancellazione", utente=_utente(), esito="rifiutato",
+                        dettaglio=str(esito.get("esito"))[:200], indirizzo_ip=_ip())
+            return redirect(url_for("gestione_email", messaggio=uid))
+
+        anonimizzati = esito.get("anonimizzati") or {}
+        dettaglio = (f"Account cancellato; resi anonimi "
+                     f"{anonimizzati.get('viaggi', 0)} viaggi e "
+                     f"{anonimizzati.get('valutazioni', 0)} valutazioni.")
+        # L'indirizzo non finisce nel registro: e' il dato personale che ci e'
+        # stato chiesto di cancellare, e tenerlo nel giornale lo conserverebbe
+        # in casa proprio mentre si certifica di averlo tolto.
+        db.registra("email.cancellazione", utente=_utente(), esito="eseguito",
+                    dettaglio=dettaglio, indirizzo_ip=_ip())
+        flash(dettaglio, "esito")
+
+    try:
+        posta_in_arrivo.rispondi(messaggio, risposte.con_firma(testo))
+    except Exception as guasto:  # noqa: BLE001
+        flash(f"Risposta non inviata: {guasto}", "attenzione")
+        db.registra("email.risposta", utente=_utente(), esito="fallito",
+                    dettaglio=str(guasto)[:200], indirizzo_ip=_ip())
+        return redirect(url_for("gestione_email", messaggio=uid))
+
+    db.registra("email.risposta", utente=_utente(), esito="eseguito",
+                dettaglio=f"risposta a: {messaggio.oggetto}"[:200],
+                indirizzo_ip=_ip())
+    flash("Risposta inviata.", "esito")
+
+    avvisi.pratica_evasa(
+        azione="Cancellazione dati eseguita" if cancellare else "Risposta inviata",
+        mittente=messaggio.mittente or messaggio.indirizzo,
+        oggetto=messaggio.oggetto,
+        operatore=_utente(),
+        dettaglio=dettaglio,
+    )
+    return redirect(url_for("gestione_email"))
 
 
 @app.route("/registro")

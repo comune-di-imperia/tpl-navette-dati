@@ -1,0 +1,33 @@
+[Unit]
+# Esegue per conto dell'applicazione web le operazioni sugli account dei
+# cittadini richieste dalla pagina di gestione della posta. Esiste perche'
+# l'applicazione gira senza facolta' di elevare i privilegi, e quella
+# protezione non va tolta per una funzione che si usa poche volte l'anno.
+#
+# Coda distinta da quella dei dispositivi: cancellare i dati di una persona
+# non e' un'operazione dello stesso peso di abilitare un telefono, e le due
+# strade restano separate.
+Description=Operazioni sugli account dei cittadini richieste dall'applicazione TPL
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+# Servono i privilegi per richiamare il comando, che a sua volta passa
+# all'utenza di servizio dell'applicazione di bordo.
+User=root
+ExecStart=/usr/local/bin/tpl-utenti-agente
+Restart=on-failure
+RestartSec=5
+
+# Scrive soltanto la cartella delle richieste; il resto resta in sola lettura.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tpl-utenti
+ProtectHome=true
+PrivateTmp=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

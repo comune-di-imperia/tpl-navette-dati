@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block titolo %}Gestione email{% endblock %}
+{% block contenuto %}
+<h1>Gestione email</h1>
+
+<p class="minuto">
+  I messaggi arrivati alla casella della sperimentazione. Da qui si risponde al
+  cittadino e, a chi chiede la cancellazione dei propri dati, si cancella
+  l'account. Ogni operazione finisce nel registro e viene segnalata a chi
+  riceve gli avvisi della casella, per posta e su Telegram.
+</p>
+
+{% if errore %}
+<div class="avviso errore"><b>Casella non disponibile.</b> {{ errore }}</div>
+{% endif %}
+
+<div class="posta">
+  <div class="elenco-messaggi">
+    <h2>In casella</h2>
+    {% for m in messaggi %}
+    <a class="voce{% if scelto and m.uid == scelto.uid %} aperta{% endif %}{% if m.automatico %} automatica{% endif %}"
+       href="{{ url_for('gestione_email', messaggio=m.uid) }}">
+      <div class="riga-alta">
+        <span class="mittente">{{ m.mittente or m.indirizzo }}</span>
+        <span class="quando">{{ m.quando.strftime('%d/%m %H:%M') if m.quando else '' }}</span>
+      </div>
+      <div class="oggetto">{{ m.oggetto or '(senza oggetto)' }}</div>
+      <div class="anteprima">{{ m.anteprima[:110] }}</div>
+      <div class="stati">
+        {% if m.risposto %}<span class="stato completata">risposto</span>{% endif %}
+        {% if m.automatico %}<span class="stato">automatico</span>{% endif %}
+        {% if not m.letto %}<span class="stato nuovo">non letto</span>{% endif %}
+      </div>
+    </a>
+    {% else %}
+    {% if not errore %}<p class="minuto">Nessun messaggio in casella.</p>{% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="messaggio">
+    {% if not scelto %}
+    <p class="minuto">Scegli un messaggio dall'elenco per leggerlo e rispondere.</p>
+    {% else %}
+    <h2>{{ scelto.oggetto or '(senza oggetto)' }}</h2>
+    <p class="minuto">
+      Da <b>{{ scelto.mittente or scelto.indirizzo }}</b>
+      &lt;{{ scelto.indirizzo }}&gt;
+      {% if scelto.quando %}&middot; {{ scelto.quando.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+      {% if scelto.risposto %}&middot; <b>gi&agrave; risposto</b>{% endif %}
+    </p>
+
+    <pre class="testo-messaggio">{{ scelto.testo }}</pre>
+
+    {% if scelto.automatico %}
+    <div class="avviso">
+      Messaggio automatico: a un avviso di mancata consegna non si risponde.
+      Se si ripete, vuol dire che stiamo scrivendo a un indirizzo che non
+      esiste, e va corretto nell'elenco dei destinatari.
+    </div>
+    {% else %}
+
+    <h3>Verifica registrazione</h3>
+    <form method="post" action="{{ url_for('gestione_email_cerca') }}" class="modulo">
+      <input type="hidden" name="csrf" value="{{ gettone() }}">
+      <input type="hidden" name="uid" value="{{ scelto.uid }}">
+      <input type="hidden" name="indirizzo" value="{{ scelto.indirizzo }}">
+      <button type="submit" {% if not ponte_attivo %}disabled{% endif %}>
+        Cerca l'account di {{ scelto.indirizzo }}
+      </button>
+      <span class="minuto">Dice se esiste, e che cosa comporterebbe cancellarlo.</span>
+    </form>
+
+    <h3>Rispondi</h3>
+    <form method="post" action="{{ url_for('gestione_email_rispondi') }}"
+          class="modulo risposta"
+          onsubmit="return !document.getElementById('cancella').checked ||
+                    confirm('Stai per cancellare definitivamente i dati di {{ scelto.indirizzo }}. L\'operazione non si annulla. Procedere?');">
+      <input type="hidden" name="csrf" value="{{ gettone() }}">
+      <input type="hidden" name="uid" value="{{ scelto.uid }}">
+
+      <label>Risposta standard
+        <select id="modello" onchange="applicaModello()">
+          {% for m in modelli %}
+          <option value="{{ m.chiave }}" {% if m.chiave == predefinito %}selected{% endif %}>
+            {{ m.titolo }}
+          </option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="minuto" id="quando-usarla"></p>
+
+      <textarea name="testo" id="testo" rows="12"
+                spellcheck="true"></textarea>
+      <p class="minuto">
+        La firma del servizio viene aggiunta in fondo automaticamente.
+      </p>
+
+      <div class="cancellazione">
+        <label class="scelta">
+          <input type="checkbox" name="cancella" value="si" id="cancella"
+                 onchange="document.getElementById('conferma').disabled = !this.checked;"
+                 {% if not ponte_attivo %}disabled{% endif %}>
+          <b>Cancella anche i dati personali</b> di {{ scelto.indirizzo }}
+        </label>
+        <p class="minuto">
+          Cancella la registrazione: identit&agrave; di accesso, anagrafica,
+          consenso e indirizzo di posta. I viaggi e le valutazioni gi&agrave;
+          registrati restano, <b>senza pi&ugrave; alcun legame con la persona</b>,
+          con le sole caratteristiche statistiche. Il commento scritto viene
+          cancellato. <b>L'operazione non si annulla.</b>
+          {% if not ponte_attivo %}
+          <br><b>Non disponibile:</b> il servizio di gestione degli account non
+          risponde su questo server.
+          {% endif %}
+        </p>
+        <label>Per confermare scrivi {{ parola }}
+          <input type="text" name="conferma" id="conferma" disabled
+                 autocomplete="off" placeholder="{{ parola }}">
+        </label>
+      </div>
+
+      <button type="submit" class="principale">Invia la risposta</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const MODELLI = {
+  {% for m in modelli %}
+  "{{ m.chiave }}": {
+    testo: {{ m.testo | tojson }},
+    quando: {{ m.quando | tojson }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+function applicaModello() {
+  const scelta = document.getElementById('modello').value;
+  const modello = MODELLI[scelta];
+  if (!modello) { return; }
+  document.getElementById('testo').value = modello.testo;
+  document.getElementById('quando-usarla').textContent = modello.quando;
+}
+document.addEventListener('DOMContentLoaded', applicaModello);
+</script>
+
+<style>
+/* Due colonne: l'elenco a sinistra resta sempre visibile, il messaggio a
+   destra. Sotto gli 900 px vanno una sopra l'altra, perche' da telefono due
+   colonne strette non si leggono. */
+.posta { display: flex; gap: 20px; align-items: flex-start; margin-top: 16px; }
+.elenco-messaggi { flex: 0 0 330px; max-height: 78vh; overflow-y: auto; }
+.messaggio { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 900px) {
+  .posta { flex-direction: column; }
+  .elenco-messaggi { flex: 1 1 auto; width: 100%; max-height: none; }
+}
+
+.elenco-messaggi .voce {
+  display: block; text-decoration: none; color: inherit;
+  border: 1px solid var(--bordo); border-radius: 7px;
+  padding: 9px 11px; margin-bottom: 7px; background: #fff;
+}
+.elenco-messaggi .voce:hover { border-color: var(--accento); }
+.elenco-messaggi .voce.aperta {
+  border-color: var(--accento); border-left-width: 4px; background: #f6f9fd;
+}
+/* Gli automatici restano visibili ma spenti: non sono pratiche da evadere. */
+.elenco-messaggi .voce.automatica { opacity: .6; }
+.elenco-messaggi .riga-alta {
+  display: flex; justify-content: space-between; gap: 8px; font-size: 13px;
+}
+.elenco-messaggi .mittente { font-weight: 600; }
+.elenco-messaggi .quando { color: var(--tenue); white-space: nowrap; }
+.elenco-messaggi .oggetto { font-size: 13.5px; margin-top: 2px; }
+.elenco-messaggi .anteprima {
+  font-size: 12px; color: var(--tenue); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.elenco-messaggi .stati { margin-top: 5px; }
+.elenco-messaggi .stato {
+  display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px;
+  background: #eef1f5; color: #5a6779; margin-right: 4px;
+}
+.elenco-messaggi .stato.nuovo { background: #e6f0fb; color: var(--accento); }
+
+.testo-messaggio {
+  white-space: pre-wrap; word-wrap: break-word; font-family: inherit;
+  background: #f7f9fc; border: 1px solid var(--bordo); border-radius: 7px;
+  padding: 12px 14px; margin: 10px 0 18px; font-size: 13.5px;
+}
+.risposta textarea {
+  width: 100%; font-family: inherit; font-size: 13.5px; line-height: 1.5;
+  padding: 10px 12px; border: 1px solid var(--bordo); border-radius: 7px;
+}
+/* Il riquadro della cancellazione si distingue dal resto del modulo: chi lo
+   spunta deve accorgersi di essere uscito dall'ordinaria amministrazione. */
+.cancellazione {
+  border: 1px solid #e2c3c0; border-left: 4px solid #a8322c;
+  background: #fdf7f6; border-radius: 7px; padding: 12px 14px; margin: 16px 0;
+}
+.cancellazione input[type="text"] { text-transform: uppercase; }
+/* Casella e testo sulla stessa riga: separati, la spunta sembra riferirsi
+   al paragrafo sopra invece che alla frase accanto. */
+.cancellazione label.scelta {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;
+}
+.cancellazione label.scelta input { flex: 0 0 auto; }
+</style>
+{% endblock %}

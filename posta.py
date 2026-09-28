@@ -37,6 +37,7 @@ def invia(
     allegati: Optional[List[Path]] = None,
     html: Optional[str] = None,
     immagini: Optional[Dict[str, Path]] = None,
+    riferimento: str = "",
 ) -> None:
     """Porta 587 con STARTTLS: la 25 e' bloccata in uscita.
 
@@ -53,6 +54,12 @@ def invia(
     msg["From"] = f"{MITTENTE} <{os.environ['SMTP_USER']}>"
     msg["To"] = ", ".join(destinatari)
     msg["Subject"] = oggetto
+    if riferimento:
+        # Aggancia la risposta alla conversazione: nel programma di posta di
+        # chi ha scritto, la risposta compare sotto la sua domanda invece che
+        # in un filo a se' stante.
+        msg["In-Reply-To"] = riferimento
+        msg["References"] = riferimento
     msg.set_content(corpo)
 
     if html:
