@@ -1253,6 +1253,54 @@ def gestione_email_cerca():
     return redirect(url_for("gestione_email", messaggio=uid))
 
 
+@app.route("/email/elimina", methods=["POST"])
+@richiede_permesso(permessi.GESTIONE_EMAIL)
+def gestione_email_elimina():
+    """Sposta il messaggio nel cestino della casella.
+
+    Non lo distrugge: resta recuperabile da qualunque programma di posta. Su
+    una casella istituzionale un messaggio e' corrispondenza con un cittadino,
+    e farla sparire davvero non e' cosa da un pulsante.
+    """
+    _verifica_gettone()
+    uid = request.form.get("uid", "")
+
+    try:
+        messaggio = posta_in_arrivo.leggi(uid)
+    except Exception as guasto:  # noqa: BLE001
+        flash(f"Messaggio non leggibile: {guasto}", "attenzione")
+        return redirect(url_for("gestione_email"))
+    if messaggio is None:
+        flash("Messaggio non trovato: forse e' gia' stato spostato.", "attenzione")
+        return redirect(url_for("gestione_email"))
+
+    try:
+        cestino = posta_in_arrivo.elimina(uid)
+    except Exception as guasto:  # noqa: BLE001
+        flash(f"Messaggio non eliminato: {guasto}", "attenzione")
+        db.registra("email.eliminazione", utente=_utente(), esito="fallito",
+                    dettaglio=str(guasto)[:200], indirizzo_ip=_ip())
+        return redirect(url_for("gestione_email", messaggio=uid))
+
+    db.registra("email.eliminazione", utente=_utente(), esito="eseguito",
+                dettaglio=f"nel cestino: {messaggio.oggetto}"[:200],
+                indirizzo_ip=_ip())
+    flash(f"Messaggio spostato in {cestino}.", "esito")
+
+    # Di un rimbalzo buttato via non si avvisa nessuno: sono decine, e un
+    # avviso per ciascuno insegnerebbe a ignorare anche gli altri. Della
+    # corrispondenza di un cittadino si', perche' e' una pratica che sparisce
+    # dalla vista di chi la stava seguendo.
+    if not messaggio.automatico:
+        avvisi.pratica_evasa(
+            azione="Messaggio spostato nel cestino",
+            mittente=messaggio.mittente or messaggio.indirizzo,
+            oggetto=messaggio.oggetto,
+            operatore=_utente(),
+        )
+    return redirect(url_for("gestione_email"))
+
+
 @app.route("/email/rispondi", methods=["POST"])
 @richiede_permesso(permessi.GESTIONE_EMAIL)
 def gestione_email_rispondi():

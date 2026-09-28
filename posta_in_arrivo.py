@@ -25,6 +25,7 @@ from typing import List, Optional
 logger = logging.getLogger("tpl.posta_in_arrivo")
 
 CARTELLA = "INBOX"
+CESTINO = "Trash"
 
 # Mittenti che non sono cittadini: avvisi di mancata consegna e notifiche
 # automatiche. Restano visibili, ma segnati, perche' a un rimbalzo non si
@@ -188,6 +189,44 @@ def segna_risposto(uid: str) -> None:
     try:
         conn.select(CARTELLA)
         conn.uid("store", uid, "+FLAGS", "(\\Answered \\Seen)")
+    finally:
+        try:
+            conn.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+
+
+def elimina(uid: str) -> str:
+    """Sposta il messaggio nel cestino della casella.
+
+    Non lo distrugge: lo copia in ``Trash`` e lo toglie dalla posta in arrivo.
+    Su una casella istituzionale un messaggio e' corrispondenza con un
+    cittadino, e cancellarlo davvero non e' una decisione da prendere con un
+    pulsante — nel cestino resta recuperabile da qualunque programma di posta.
+
+    Lo spurgo e' mirato al singolo messaggio (``UID EXPUNGE``, disponibile
+    perche' il server dichiara UIDPLUS): un ``EXPUNGE`` semplice porterebbe
+    via **tutti** i messaggi marcati per la cancellazione nella cartella,
+    compresi quelli marcati da qualcun altro che in quel momento sta lavorando
+    dal suo programma di posta.
+    """
+    conn = _connessione()
+    try:
+        conn.select(CARTELLA)
+        esito, _ = conn.uid("copy", uid, CESTINO)
+        if esito != "OK":
+            raise RuntimeError(
+                f"non si riesce a copiare il messaggio in {CESTINO}")
+        conn.uid("store", uid, "+FLAGS", "(\\Deleted)")
+        if "UIDPLUS" in conn.capabilities:
+            conn.uid("expunge", uid)
+        else:
+            # Senza UIDPLUS non si spurga: meglio lasciarlo marcato e sparire
+            # dalla vista che rischiare di portarsi via i messaggi altrui.
+            logger.warning("UID EXPUNGE non disponibile: messaggio solo marcato")
+        logger.info("Messaggio spostato nel cestino",
+                    extra={"context": {"uid": uid}})
+        return CESTINO
     finally:
         try:
             conn.logout()

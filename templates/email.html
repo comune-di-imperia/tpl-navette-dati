@@ -51,6 +51,18 @@
 
     <pre class="testo-messaggio">{{ scelto.testo }}</pre>
 
+    <form method="post" action="{{ url_for('gestione_email_elimina') }}"
+          class="modulo in-linea"
+          onsubmit="return confirm('Spostare questo messaggio nel cestino della casella?');">
+      <input type="hidden" name="csrf" value="{{ gettone() }}">
+      <input type="hidden" name="uid" value="{{ scelto.uid }}">
+      <button type="submit" class="pericolo">Elimina il messaggio</button>
+      <span class="minuto">
+        Lo sposta nel cestino della casella: resta recuperabile da un programma
+        di posta, non viene distrutto.
+      </span>
+    </form>
+
     {% if scelto.automatico %}
     <div class="avviso">
       Messaggio automatico: a un avviso di mancata consegna non si risponde.
@@ -208,5 +220,11 @@ document.addEventListener('DOMContentLoaded', applicaModello);
   display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;
 }
 .cancellazione label.scelta input { flex: 0 0 auto; }
+/* Il pulsante di eliminazione sta sulla stessa riga della sua spiegazione:
+   staccato sembrerebbe l'azione principale della pagina, che non e'. */
+.modulo.in-linea {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 18px;
+}
 </style>
 {% endblock %}
