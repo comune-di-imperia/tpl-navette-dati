@@ -1334,6 +1334,15 @@ def gestione_email_rispondi():
         flash("Messaggio non trovato: forse e' stato spostato.", "attenzione")
         return redirect(url_for("gestione_email"))
 
+    # A un messaggio si risponde una volta sola. Il controllo sta qui e non
+    # solo nella pagina: nascondere un modulo non impedisce di inviarlo.
+    # Se il cittadino torna a scrivere, il suo e' un messaggio nuovo, con un
+    # suo identificativo, e la strada resta aperta.
+    if messaggio.risposto:
+        flash("A questo messaggio e' gia' stato risposto: la risposta non e' "
+              "stata inviata di nuovo.", "attenzione")
+        return redirect(url_for("gestione_email", messaggio=uid))
+
     if not testo:
         flash("La risposta e' vuota.", "attenzione")
         return redirect(url_for("gestione_email", messaggio=uid))

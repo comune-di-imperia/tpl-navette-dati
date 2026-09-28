@@ -112,6 +112,20 @@
       <span class="minuto">Dice se esiste, e che cosa comporterebbe cancellarlo.</span>
     </form>
 
+    {% if scelto.risposto %}
+    <h3>Rispondi</h3>
+    <div class="avviso">
+      <b>A questo messaggio &egrave; gi&agrave; stato risposto.</b>
+      Non si risponde due volte: se il cittadino torna a scrivere, il suo
+      sar&agrave; un messaggio nuovo e comparir&agrave; in elenco con il modulo
+      di risposta.
+      {% if not conversazione %}
+      La risposta non si trova fra gli inviati perch&eacute; &egrave; partita
+      prima che se ne conservasse copia sul server: quelle successive ci sono.
+      {% endif %}
+    </div>
+    {% else %}
+
     <h3>Rispondi</h3>
     <form method="post" action="{{ url_for('gestione_email_rispondi') }}"
           class="modulo risposta"
@@ -163,8 +177,9 @@
 
       <button type="submit" class="principale">Invia la risposta</button>
     </form>
-    {% endif %}
-    {% endif %}
+    {% endif %}{# gia' risposto #}
+    {% endif %}{# messaggio automatico #}
+    {% endif %}{# nessun messaggio scelto #}
   </div>
 </div>
 
