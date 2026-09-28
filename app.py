@@ -1205,17 +1205,26 @@ def gestione_email():
         errore = f"Casella non raggiungibile: {guasto}"
 
     scelto = None
+    conversazione = []
     uid = request.args.get("messaggio", "")
     if uid and not errore:
         try:
             scelto = posta_in_arrivo.leggi(uid)
         except Exception as guasto:  # noqa: BLE001
             errore = f"Messaggio non leggibile: {guasto}"
+        if scelto is not None:
+            try:
+                conversazione = posta_in_arrivo.conversazione(scelto)
+            except Exception:  # noqa: BLE001
+                # Le risposte gia' mandate sono un di piu': se la cartella
+                # degli inviati non risponde, la pratica si lavora lo stesso.
+                logger.exception("Conversazione non ricostruita")
 
     return render_template(
         "email.html",
         messaggi=messaggi,
         scelto=scelto,
+        conversazione=conversazione,
         modelli=risposte.MODELLI,
         predefinito=risposte.PREDEFINITO,
         errore=errore,

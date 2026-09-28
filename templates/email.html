@@ -49,7 +49,37 @@
       {% if scelto.risposto %}&middot; <b>gi&agrave; risposto</b>{% endif %}
     </p>
 
-    <pre class="testo-messaggio">{{ scelto.testo }}</pre>
+    <div class="scambio">
+      <div class="bolla ricevuta">
+        <div class="chi">
+          {{ scelto.mittente or scelto.indirizzo }}
+          <span class="minuto">
+            {{ scelto.quando.strftime('%d/%m/%Y %H:%M') if scelto.quando else '' }}
+          </span>
+        </div>
+        <pre class="testo-messaggio">{{ scelto.testo }}</pre>
+      </div>
+
+      {% for r in conversazione %}
+      <div class="bolla inviata">
+        <div class="chi">
+          Risposta del Comune
+          <span class="minuto">
+            {{ r.quando.strftime('%d/%m/%Y %H:%M') if r.quando else '' }}
+          </span>
+        </div>
+        <pre class="testo-messaggio">{{ r.testo }}</pre>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if scelto.risposto and not conversazione %}
+    <p class="minuto">
+      Risulta gi&agrave; risposto, ma la risposta non si trova fra gli inviati:
+      pu&ograve; essere partita da un programma di posta che non conserva copia
+      sul server.
+    </p>
+    {% endif %}
 
     <form method="post" action="{{ url_for('gestione_email_elimina') }}"
           class="modulo in-linea"
@@ -200,9 +230,26 @@ document.addEventListener('DOMContentLoaded', applicaModello);
 
 .testo-messaggio {
   white-space: pre-wrap; word-wrap: break-word; font-family: inherit;
-  background: #f7f9fc; border: 1px solid var(--bordo); border-radius: 7px;
-  padding: 12px 14px; margin: 10px 0 18px; font-size: 13.5px;
+  padding: 0; margin: 0; font-size: 13.5px;
 }
+/* La conversazione: ricevute a sinistra, risposte nostre rientrate e su
+   fondo diverso. Chi riapre una pratica deve vedere in un colpo d'occhio chi
+   ha detto che cosa, senza leggere per capirlo. */
+.scambio { margin: 10px 0 18px; }
+.bolla {
+  border: 1px solid var(--bordo); border-radius: 7px;
+  padding: 10px 14px 12px; margin-bottom: 8px;
+}
+.bolla .chi {
+  font-size: 12px; font-weight: 600; color: #46505f; margin-bottom: 6px;
+  display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.bolla .chi .minuto { font-weight: normal; }
+.bolla.ricevuta { background: #f7f9fc; }
+.bolla.inviata {
+  background: #f2f8f3; border-color: #cfe3d3; margin-left: 28px;
+}
+.bolla.inviata .chi { color: #1b7f4b; }
 .risposta textarea {
   width: 100%; font-family: inherit; font-size: 13.5px; line-height: 1.5;
   padding: 10px 12px; border: 1px solid var(--bordo); border-radius: 7px;

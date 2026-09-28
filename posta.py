@@ -38,7 +38,7 @@ def invia(
     html: Optional[str] = None,
     immagini: Optional[Dict[str, Path]] = None,
     riferimento: str = "",
-) -> None:
+) -> EmailMessage:
     """Porta 587 con STARTTLS: la 25 e' bloccata in uscita.
 
     Con ``html`` il messaggio parte in due versioni: chi legge in testo
@@ -90,6 +90,11 @@ def invia(
         s.starttls(context=ssl.create_default_context())
         s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
         s.send_message(msg)
+
+    # Si restituisce il messaggio spedito: chi risponde a un cittadino deve
+    # poterne conservare copia nella cartella degli inviati, perche' la
+    # consegna via SMTP non ne lascia nessuna sul server.
+    return msg
 
 
 def invia_link_password(

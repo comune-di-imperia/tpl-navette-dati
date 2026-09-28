@@ -18,7 +18,9 @@ import imaplib
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from email.utils import parseaddr, parsedate_to_datetime
 from typing import List, Optional
 
@@ -26,6 +28,7 @@ logger = logging.getLogger("tpl.posta_in_arrivo")
 
 CARTELLA = "INBOX"
 CESTINO = "Trash"
+INVIATI = "Sent"
 
 # Mittenti che non sono cittadini: avvisi di mancata consegna e notifiche
 # automatiche. Restano visibili, ma segnati, perche' a un rimbalzo non si
@@ -60,6 +63,9 @@ class Messaggio:
     automatico: bool = False
     message_id: str = ""
     riferimenti: List[str] = field(default_factory=list)
+    # Vero per cio' che abbiamo mandato noi: nella conversazione le due parti
+    # vanno distinte a colpo d'occhio, non lette per capire chi ha scritto.
+    inviata: bool = False
 
 
 def configurata() -> bool:
@@ -123,6 +129,32 @@ def _testo(messaggio) -> str:
     return "\n".join(righe)
 
 
+def _bandiere(conn, uid_scelti: List[bytes]) -> dict:
+    """Le bandiere di tutti i messaggi in una sola richiesta.
+
+    Chiederle insieme al corpo non funziona su questo server: la risposta a
+    ``(FLAGS BODY.PEEK[])`` porta il corpo in una tupla e le bandiere altrove,
+    e chi le cercasse nell'intestazione della tupla non le troverebbe mai —
+    tutti i messaggi risulterebbero non letti e nessuno risulterebbe risposto,
+    anche dopo aver risposto. Chieste da sole, arrivano dove ci si aspetta.
+    """
+    if not uid_scelti:
+        return {}
+    insieme = b",".join(uid_scelti).decode()
+    esito, dati = conn.uid("fetch", insieme, "(FLAGS)")
+    if esito != "OK":
+        return {}
+
+    mappa = {}
+    for voce in dati:
+        testo = voce.decode(errors="replace") if isinstance(voce, bytes) else str(voce)
+        trovato = re.search(r"UID (\d+)", testo)
+        bandiere = re.search(r"FLAGS \(([^)]*)\)", testo)
+        if trovato and bandiere:
+            mappa[trovato.group(1)] = bandiere.group(1)
+    return mappa
+
+
 def elenco(limite: int = 50, con_testo: bool = False) -> List[Messaggio]:
     """I messaggi in casella, dal piu' recente."""
     conn = _connessione()
@@ -133,14 +165,14 @@ def elenco(limite: int = 50, con_testo: bool = False) -> List[Messaggio]:
             return []
         uid_tutti = dati[0].split()
         scelti = uid_tutti[-limite:][::-1]
+        stati = _bandiere(conn, scelti)
         messaggi = []
         for uid in scelti:
-            pezzi = "(RFC822)" if con_testo else "(FLAGS BODY.PEEK[])"
-            esito, dati = conn.uid("fetch", uid, pezzi)
+            esito, dati = conn.uid("fetch", uid, "(BODY.PEEK[])")
             if esito != "OK" or not dati or not isinstance(dati[0], tuple):
                 continue
             grezzo = dati[0][1]
-            bandiere = str(dati[0][0])
+            bandiere = stati.get(uid.decode(), "")
             msg = email.message_from_bytes(grezzo, policy=email.policy.default)
 
             nome, indirizzo = parseaddr(_decodifica(msg.get("From")))
@@ -160,6 +192,7 @@ def elenco(limite: int = 50, con_testo: bool = False) -> List[Messaggio]:
                 testo=testo if con_testo else "",
                 letto="\\Seen" in bandiere,
                 risposto="\\Answered" in bandiere,
+                inviata=False,
                 automatico=any(a in indirizzo.lower() for a in AUTOMATICI),
                 message_id=(msg.get("Message-ID") or "").strip(),
                 riferimenti=(msg.get("References") or "").split(),
@@ -189,6 +222,104 @@ def segna_risposto(uid: str) -> None:
     try:
         conn.select(CARTELLA)
         conn.uid("store", uid, "+FLAGS", "(\\Answered \\Seen)")
+    finally:
+        try:
+            conn.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+
+
+def archivia_inviata(messaggio) -> bool:
+    """Deposita copia della risposta nella cartella degli inviati.
+
+    La consegna via SMTP non lascia nulla sul server: il cittadino riceve, e
+    di cio' che gli e' stato scritto in casella non resta traccia. Per una
+    corrispondenza fra un'amministrazione e un cittadino — tanto piu' se la
+    risposta riguarda i suoi dati personali — non e' accettabile: l'atto deve
+    essere riproducibile anche mesi dopo.
+
+    Se fallisce non si solleva: la risposta e' gia' partita, e dire a chi ha
+    premuto invio che non e' partita sarebbe falso. Resta nel giornale.
+    """
+    try:
+        conn = _connessione()
+    except Exception:  # noqa: BLE001
+        logger.exception("Copia negli inviati non depositata: casella irraggiungibile")
+        return False
+    try:
+        conn.append(INVIATI, "(\\Seen)", imaplib.Time2Internaldate(time.time()),
+                    messaggio.as_bytes())
+        logger.info("Copia della risposta depositata negli inviati")
+        return True
+    except (imaplib.IMAP4.error, OSError):
+        logger.exception("Copia negli inviati non depositata")
+        return False
+    finally:
+        try:
+            conn.logout()
+        except (imaplib.IMAP4.error, OSError):
+            pass
+
+
+def conversazione(messaggio: Messaggio) -> List[Messaggio]:
+    """Le risposte che abbiamo mandato a quel messaggio, dalla cartella Inviati.
+
+    Senza, chi apre una pratica gia' evasa vede la domanda e deve fidarsi che
+    a qualcosa sia stato risposto, senza sapere che cosa: la bandiera dice che
+    una risposta c'e' stata, non che cosa diceva. E chi deve riprendere in mano
+    il caso settimane dopo ha bisogno del testo, non di una spunta.
+
+    Si cercano i messaggi che citano l'identificativo dell'originale in
+    ``In-Reply-To`` o ``References``. Se l'originale non ne aveva uno —
+    capita con certi generatori automatici — si ripiega sul destinatario, che
+    e' meno preciso ma qui basta: la casella scrive a pochi.
+    """
+    conn = _connessione()
+    try:
+        try:
+            esito, _ = conn.select(INVIATI, readonly=True)
+        except imaplib.IMAP4.error:
+            return []
+        if esito != "OK":
+            return []
+
+        if messaggio.message_id:
+            criterio = ("OR", "HEADER", "In-Reply-To", f'"{messaggio.message_id}"',
+                        "HEADER", "References", f'"{messaggio.message_id}"')
+        else:
+            criterio = ("TO", f'"{messaggio.indirizzo}"')
+
+        esito, dati = conn.uid("search", None, *criterio)
+        if esito != "OK" or not dati or not dati[0]:
+            return []
+
+        risposte_trovate = []
+        for uid in dati[0].split():
+            esito, pezzi = conn.uid("fetch", uid, "(BODY.PEEK[])")
+            if esito != "OK" or not pezzi or not isinstance(pezzi[0], tuple):
+                continue
+            msg = email.message_from_bytes(pezzi[0][1], policy=email.policy.default)
+            try:
+                quando = parsedate_to_datetime(msg.get("Date"))
+            except (TypeError, ValueError):
+                quando = None
+            nome, indirizzo = parseaddr(_decodifica(msg.get("To")))
+            testo = _testo(msg)
+            risposte_trovate.append(Messaggio(
+                uid=uid.decode(),
+                quando=quando,
+                mittente="Comune di Imperia",
+                indirizzo=indirizzo.lower(),
+                oggetto=_decodifica(msg.get("Subject")),
+                anteprima=" ".join(testo.split())[:ANTEPRIMA],
+                testo=testo,
+                letto=True,
+                inviata=True,
+                message_id=(msg.get("Message-ID") or "").strip(),
+            ))
+        risposte_trovate.sort(key=lambda m: m.quando or datetime.min.replace(
+            tzinfo=timezone.utc))
+        return risposte_trovate
     finally:
         try:
             conn.logout()
@@ -242,7 +373,7 @@ def rispondi(messaggio: Messaggio, testo: str) -> None:
     if not oggetto.lower().startswith("re:"):
         oggetto = f"Re: {oggetto}"
 
-    posta.invia(
+    spedito = posta.invia(
         destinatari=[messaggio.indirizzo],
         oggetto=oggetto,
         corpo=testo,
@@ -250,6 +381,7 @@ def rispondi(messaggio: Messaggio, testo: str) -> None:
         # la risposta finisce sotto la sua domanda, non in un filo a parte.
         riferimento=messaggio.message_id,
     )
+    archivia_inviata(spedito)
     segna_risposto(messaggio.uid)
     logger.info("Risposta inviata a un messaggio in casella",
                 extra={"context": {"uid": messaggio.uid,
